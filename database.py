@@ -14,7 +14,6 @@ def inicializar_banco():
     cursor.execute('''CREATE TABLE IF NOT EXISTS parametros (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, unidade TEXT, limite_legal REAL)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS coletas (id INTEGER PRIMARY KEY AUTOINCREMENT, ponto_id INTEGER, parametro_id INTEGER, data_amostra DATE, valor REAL, FOREIGN KEY(ponto_id) REFERENCES pontos(id), FOREIGN KEY(parametro_id) REFERENCES parametros(id))''')
     
-    # Pré-cadastrar os parâmetros (Incluindo IQA para ser preenchido)
     cursor.execute("SELECT COUNT(*) FROM parametros")
     if cursor.fetchone()[0] == 0:
         parametros_iniciais = [
@@ -37,7 +36,6 @@ def inicializar_banco():
     conn.commit()
     conn.close()
 
-# --- BUSCAS ---
 def buscar_pontos():
     conn = get_conexao()
     df = pd.read_sql_query("SELECT * FROM pontos", conn)
@@ -79,7 +77,6 @@ def obter_id_param(nome_param):
     conn.close()
     return res[0] if res else None
 
-# --- INSERÇÕES ---
 def inserir_ponto(codigo, local, lat, lon):
     conn = get_conexao()
     cursor = conn.cursor()
@@ -101,7 +98,6 @@ def inserir_coleta(ponto_id, param_id, data, valor):
     conn.commit()
     conn.close()
 
-# --- ATUALIZAÇÕES (EDITAR) ---
 def atualizar_ponto(id_ponto, codigo, local, lat, lon):
     conn = get_conexao()
     cursor = conn.cursor()
@@ -123,7 +119,6 @@ def atualizar_coleta(id_coleta, ponto_id, param_id, data, valor):
     conn.commit()
     conn.close()
 
-# --- EXCLUSÕES ---
 def deletar_ponto(id_ponto):
     conn = get_conexao()
     cursor = conn.cursor()
