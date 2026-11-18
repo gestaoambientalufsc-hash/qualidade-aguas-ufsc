@@ -223,7 +223,7 @@ def salvar_configuracao_iqa(metodologia, fonte, observacoes):
 
 
 def atualizar_faixas_iqa(faixas):
-    """Atualiza as 5 faixas de maneira atômica, sem lacunas ou sobreposições."""
+    """Atualiza as 5 faixas, aceitando fronteiras contíguas ou inteiros consecutivos."""
     # Preserva a ordem institucional das categorias: Péssima → Ótima.
     itens = [(int(x["id"]), float(x["min"]), float(x["max"])) for x in faixas]
     if len(itens) != 5 or any(not math.isfinite(y) for _, a, b in itens for y in (a, b)):
@@ -233,8 +233,19 @@ def atualizar_faixas_iqa(faixas):
     for i, (_, a, b) in enumerate(itens):
         if a < 0 or b > 100 or a >= b:
             raise ValueError("Cada faixa deve ter mínimo menor que máximo, entre 0 e 100.")
-        if i > 0 and abs(a - itens[i - 1][2]) > 1e-8:
-            raise ValueError("As faixas não podem ter lacunas ou sobreposições.")
+        if i > 0:
+            anterior_max = itens[i - 1][2]
+            contiguo = abs(a - anterior_max) <= 1e-8
+            consecutivo_inteiro = (
+                abs(a - round(a)) <= 1e-8
+                and abs(anterior_max - round(anterior_max)) <= 1e-8
+                and abs(a - anterior_max - 1) <= 1e-8
+            )
+            if not (contiguo or consecutivo_inteiro):
+                raise ValueError(
+                    "As faixas devem ser contínuas ou usar inteiros consecutivos "
+                    "(ex.: 0–25, 26–50)."
+                )
     with conexao() as con:
         ids = [r["id"] for r in con.execute("SELECT id FROM faixas_iqa ORDER BY id")]
         if [x[0] for x in itens] != ids:
