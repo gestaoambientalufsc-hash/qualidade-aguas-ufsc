@@ -1,385 +1,124 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-import database as db
+        exibidos = exibidos[exibidos["nome"].str.contains(termo, case=False, na=False, regex=False)]
+    if exibidos.empty:
+        st.info("Nenhum parâmetro encontrado.")
+        return
+    with st.container(border=True):
+        cab = st.columns([3, 1.1, 2.2, 1.2, 2])
+        for col, rot in zip(cab, ["PARÂMETRO", "UNIDADE", "REFERÊNCIA", "VALIDAÇÃO", "AÇÕES"]):
+            col.caption(rot)
+        st.divider()
+        for _, r in exibidos.iterrows():
+            a, b, c, d, e = st.columns([3, 1.1, 2.2, 1.2, 2], vertical_alignment="center")
+            a.write(r["nome"])
+            b.caption(r["unidade"])
+            c.caption(resumo_referencia(r))
+            d.caption("Revisada" if bool(r["referencia_validada"]) else "Pendente")
+            q1, q2 = e.columns(2)
+            if q1.button("Editar", key=f"editar_param_{r['id']}", use_container_width=True):
+                formulario_parametro(r)
+            if q2.button("Reativar" if not bool(r["ativo"]) else "Arquivar",
+                         key=f"arquivar_param_{r['id']}", use_container_width=True):
+                confirmar_arquivamento("parametro", int(r["id"]), str(r["nome"]), not bool(r["ativo"]))
+            st.divider()
+    st.info("Valores importados do antigo campo 'limite_legal' permanecem pendentes até revisão da norma, "
+            "classe do corpo hídrico e demais condições de aplicabilidade.")
 
-db.inicializar_banco()
-st.set_page_config(page_title="Qualidade da Água - UFSC", layout="wide")
 
-# ==========================================
-# CONFIGURAÇÃO DINÂMICA DAS FAIXAS DO IQA
-# ==========================================
-df_faixas = db.buscar_faixas_iqa()
-IQA_FAIXAS = {}
-for _, r in df_faixas.iterrows():
-    IQA_FAIXAS[r['nome']] = {
-        "min": r['valor_min'], "max": r['valor_max'],
-        "cor_texto": r['cor_texto'], "cor_bg": r['cor_bg'], "cor_grafico": r['cor_grafico']
-    }
-
-def classificar_iqa(valor):
-    for nome, config in IQA_FAIXAS.items():
-        if config["min"] <= valor <= config["max"]:
-            return nome, config["cor_texto"], config["cor_bg"]
-    return "Indefinido", "#718096", "#EDF2F7"
-
-# ==========================================
-# CSS CUSTOMIZADO
-# ==========================================
-st.markdown("""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap');
-    * { font-family: 'Montserrat', sans-serif !important; }
-    .block-container { padding-top: 2rem !important; padding-bottom: 2rem !important; max-width: 95% !important;}
-    .stApp { background-color: #FAFAFA; }
-    h1 { font-size: 26px !important; font-weight: 700 !important; color: #2D3748 !important; margin-bottom: 5px !important;}
-    h3 { font-size: 17px !important; font-weight: 600 !important; color: #4A5568 !important; margin-bottom: 0px !important;}
-    p { font-size: 14px !important; color: #718096 !important; }
-    
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: #FFFFFF; border-radius: 16px !important; padding: 10px; 
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03); border: 1px solid #EDF2F7 !important; 
-    }
-    .metric-box-green { background-color: #E8F5E9; border-radius: 12px; padding: 20px; border: 1px solid #C8E6C9; }
-    .metric-box-blue { background-color: #E3F2FD; border-radius: 12px; padding: 20px; border: 1px solid #BBDEFB; }
-    .metric-box-cream { background-color: #FFF9C4; border-radius: 12px; padding: 20px; border: 1px solid #FFF59D; }
-    .metric-title { font-size: 11px; text-transform: uppercase; color: #4A5568; font-weight: 600; margin-bottom: 8px;}
-    .metric-value { font-size: 32px; font-weight: 600; color: #2D3748; margin: 0; line-height: 1;}
-    .iqa-badge { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 12px; border: 1px solid; display: inline-block; }
-    
-    .stButton>button { background-color: #F7FAFC !important; color: #4A5568 !important; border-radius: 8px !important; border: 1px solid #E2E8F0 !important; font-weight: 500 !important; padding: 4px 12px !important; transition: all 0.2s ease;}
-    .stButton>button:hover { background-color: #EDF2F7 !important; border-color: #CBD5E0 !important;}
-    .stSelectbox div[data-baseweb="select"], .stTextInput input, .stNumberInput input, .stDateInput input { border-radius: 8px !important; border: 1px solid #E2E8F0;}
-    .logo-container { display: flex; gap: 12px; margin-bottom: 20px; }
-    .logo-container img { height: 45px; object-fit: contain; }
-    .row-divider { border-bottom: 1px solid #EDF2F7; margin-top: 8px; margin-bottom: 8px; }
-    </style>
-""", unsafe_allow_html=True)
-
-# ==========================================
-# ESTADO E LOGIN
-# ==========================================
-if 'autenticado' not in st.session_state: st.session_state.autenticado = False
-if 'edit_ponto' not in st.session_state: st.session_state.edit_ponto = None
-if 'edit_param' not in st.session_state: st.session_state.edit_param = None
-if 'edit_coleta' not in st.session_state: st.session_state.edit_coleta = None
-if 'edit_faixa' not in st.session_state: st.session_state.edit_faixa = None  # Estado para o IQA
-
-# Buscar Dados
-df_pontos = db.buscar_pontos()
-df_parametros = db.buscar_parametros()
-df_coletas = db.buscar_coletas()
-
-ult_coleta = df_coletas['data_amostra'].max() if not df_coletas.empty else "N/A"
-if ult_coleta != "N/A":
-    partes = ult_coleta.split("-")
-    ult_coleta = f"{partes[2]}/{partes[1]}/{partes[0]}"
-
-# ==========================================
-# BARRA LATERAL
-# ==========================================
-with st.sidebar:
-    st.markdown("""<div class="logo-container"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/UFSC_logo_2.svg/120px-UFSC_logo_2.svg.png"></div>""", unsafe_allow_html=True)
-    st.markdown("<h3 style='font-size: 15px;'>Monitoramento de Qualidade de Água</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='font-size: 12px;'>Gestão das Águas - DGA/UFSC<br><a href='https://gestaoambiental.ufsc.br' style='color:#718096; text-decoration:none;'>gestaoambiental.ufsc.br</a></p>", unsafe_allow_html=True)
-    st.markdown("<hr style='border-top: 1px solid #EDF2F7;'>", unsafe_allow_html=True)
-    
-    if not st.session_state.autenticado:
-        senha = st.text_input("Acesso Restrito", type="password", placeholder="Senha do Admin")
-        if st.button("Entrar no Painel"):
-            if senha == "ufsc123":
-                st.session_state.autenticado = True
+def admin_iqa(faixas, config, parametros):
+    st.title("Configuração do IQA")
+    st.caption("Gerencie faixas de classificação e documente a origem dos valores do índice.")
+    with st.container(border=True):
+        titulo_secao("Faixas de qualidade", "Os intervalos devem ser contínuos e cobrir exatamente a escala de 0 a 100.")
+        with st.form("form_faixas_iqa"):
+            hdr = st.columns([2, 1, 1])
+            for col, texto_ in zip(hdr, ["CATEGORIA", "MÍNIMO", "MÁXIMO"]):
+                col.caption(texto_)
+            alteradas = []
+            for _, r in faixas.iterrows():
+                c1, c2, c3 = st.columns([2, 1, 1], vertical_alignment="center")
+                c1.markdown(f'<span class="status" style="color:{txt(r["cor_texto"])};'
+                            f'background:{txt(r["cor_bg"])}">{txt(r["nome"])}</span>', unsafe_allow_html=True)
+                minimo = c2.number_input(f"Mínimo {r['nome']}", value=float(r["valor_min"]),
+                                         min_value=0.0, max_value=100.0, step=1.0,
+                                         label_visibility="collapsed", key=f"faixa_min_{r['id']}")
+                maximo = c3.number_input(f"Máximo {r['nome']}", value=float(r["valor_max"]),
+                                         min_value=0.0, max_value=100.0, step=1.0,
+                                         label_visibility="collapsed", key=f"faixa_max_{r['id']}")
+                alteradas.append({"id": int(r["id"]), "min": minimo, "max": maximo})
+            if st.form_submit_button("Salvar todas as faixas", type="primary"):
+                try:
+                    db.atualizar_faixas_iqa(alteradas)
+                    st.session_state.mensagem = "Faixas do IQA atualizadas."
+                    st.rerun()
+                except ValueError as e:
+                    st.error(str(e))
+    with st.container(border=True):
+        titulo_secao("Metodologia e rastreabilidade", "A classificação por intervalos não substitui o cálculo técnico do IQA.")
+        st.warning("Atualmente o IQA é registrado como valor manual. Não há implementação de curvas de subíndices "
+                   "nem cálculo automático. Não apresente valores como calculados pelo sistema.")
+        with st.form("metodologia_iqa"):
+            met = st.text_input("Metodologia adotada", value=config.get("iqa_metodologia", ""),
+                                placeholder="Ex.: metodologia institucional documentada")
+            fonte = st.text_input("Fonte técnica / documento de referência", value=config.get("iqa_fonte", ""))
+            obs = st.text_area("Observações e limitações", value=config.get("iqa_observacoes", ""), height=100)
+            if st.form_submit_button("Salvar documentação", type="primary"):
+                db.salvar_configuracao_iqa(met, fonte, obs)
+                st.session_state.mensagem = "Documentação do IQA atualizada."
                 st.rerun()
-            else:
-                st.error("Senha incorreta")
-    else:
-        menu_admin = st.radio("Menu Administrativo", ["Registrar Coleta", "Gerenciar Pontos", "Gerenciar Parâmetros", "Configurar IQA"])
-        st.markdown("<hr style='border-top: 1px solid #EDF2F7;'>", unsafe_allow_html=True)
-        st.success("Administrador logado")
-        if st.button("Sair do Painel"):
-            st.session_state.autenticado = False
+        participantes = parametros[parametros["compoe_iqa"] == 1]
+        if not participantes.empty:
+            st.markdown("**Parâmetros marcados como participantes do IQA**")
+            st.dataframe(participantes[["nome", "peso_iqa", "curva_iqa"]].rename(columns={
+                "nome": "Parâmetro", "peso_iqa": "Peso documentado", "curva_iqa": "Curva/fonte"}),
+                hide_index=True, use_container_width=True)
+        else:
+            st.caption("Nenhum parâmetro foi marcado como participante do IQA.")
+
+
+def painel_admin():
+    pontos = db.buscar_pontos()
+    parametros = db.buscar_parametros()
+    coletas = db.buscar_coletas()
+    amostras = db.buscar_amostras()
+    faixas = db.buscar_faixas_iqa()
+    config = db.buscar_configuracao_iqa()
+    opcoes = ["Visão geral", "Coletas e análises", "Pontos de coleta", "Parâmetros ambientais", "Configuração do IQA"]
+    with st.sidebar:
+        st.markdown(marca(), unsafe_allow_html=True)
+        st.divider()
+        st.caption("MENU ADMINISTRATIVO")
+        st.radio("Navegação", opcoes, label_visibility="collapsed", key="admin_menu")
+        st.divider()
+        if st.button("↗ Ver painel público", use_container_width=True):
+            st.session_state.pagina = "publico"
             st.rerun()
+        if st.button("Sair da administração", use_container_width=True):
+            st.session_state.autenticado = False
+            st.session_state.pagina = "publico"
+            st.rerun()
+        st.caption("UFSC · Gestão Ambiental")
+    if "mensagem" in st.session_state:
+        st.toast(st.session_state.pop("mensagem"))
+    menu = st.session_state.admin_menu
+    if menu == opcoes[0]:
+        admin_visao_geral(pontos, parametros, coletas, amostras)
+    elif menu == opcoes[1]:
+        admin_coletas(pontos, parametros, amostras, coletas)
+    elif menu == opcoes[2]:
+        admin_pontos(pontos)
+    elif menu == opcoes[3]:
+        admin_parametros(parametros)
+    elif menu == opcoes[4]:
+        admin_iqa(faixas, config, parametros)
 
-# ==========================================
-# ÁREA PÚBLICA (VISUALIZAÇÃO GERAL)
-# ==========================================
-if not st.session_state.autenticado:
-    
-    st.markdown("<h1>Monitoramento Qualidade de Água Córregos UFSC</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='margin-bottom: 25px;'>Histórico de coletas, comparação com a legislação ambiental e evolução do Índice de Qualidade das Águas no campus Florianópolis.</p>", unsafe_allow_html=True)
-    
-    c_met1, c_met2, c_met3 = st.columns(3)
-    with c_met1: st.markdown(f'<div class="metric-box-green"><div class="metric-title">Pontos Monitorados</div><div class="metric-value">{len(df_pontos)}</div></div>', unsafe_allow_html=True)
-    with c_met2: st.markdown(f'<div class="metric-box-blue"><div class="metric-title">Análises Registradas</div><div class="metric-value">{len(df_coletas)}</div></div>', unsafe_allow_html=True)
-    with c_met3: st.markdown(f'<div class="metric-box-cream"><div class="metric-title">Última Coleta</div><div class="metric-value">{ult_coleta}</div></div>', unsafe_allow_html=True)
-    st.markdown("<br>", unsafe_allow_html=True)
 
-    # Análise Temporal
-    with st.container(border=True):
-        col_tit, col_sel1, col_sel2 = st.columns([2, 1, 1])
-        with col_tit:
-            st.markdown("<h3>Análise temporal</h3>", unsafe_allow_html=True)
-            st.markdown("<p>Evolução do parâmetro escolhido frente ao limite legal e o IQA do ponto.</p>", unsafe_allow_html=True)
-        
-        opcoes_pontos = ["Selecione o ponto..."] + df_pontos['local'].tolist() if not df_pontos.empty else ["Selecione o ponto..."]
-        ponto_sel = col_sel1.selectbox("Ponto", opcoes_pontos, label_visibility="collapsed")
-        
-        param_lista = df_parametros[df_parametros['nome'] != 'IQA (Índice de Qualidade da Água)']['nome'].tolist()
-        opcoes_param = ["Selecione o parâmetro..."] + param_lista if param_lista else ["Selecione o parâmetro..."]
-        param_sel = col_sel2.selectbox("Parâmetro", opcoes_param, label_visibility="collapsed")
+# Proteção de rota: jamais renderizar a administração sem autenticação.
+if st.session_state.pagina == "admin" and not st.session_state.autenticado:
+    st.session_state.pagina = "login"
 
-        if not df_coletas.empty and ponto_sel != "Selecione o ponto..." and param_sel != "Selecione o parâmetro...":
-            df_graf = df_coletas[(df_coletas['local'] == ponto_sel) & (df_coletas['parametro'] == param_sel)].sort_values(by="data_amostra").copy()
-            df_iqa = df_coletas[(df_coletas['local'] == ponto_sel) & (df_coletas['parametro'] == 'IQA (Índice de Qualidade da Água)')].sort_values(by="data_amostra").copy()
-            
-            if not df_graf.empty: df_graf['data_str'] = pd.to_datetime(df_graf['data_amostra']).dt.strftime('%d/%m/%Y')
-            if not df_iqa.empty: df_iqa['data_str'] = pd.to_datetime(df_iqa['data_amostra']).dt.strftime('%d/%m/%Y')
-
-            g1, g2 = st.columns(2)
-            with g1:
-                if not df_graf.empty:
-                    limite = df_graf['limite_legal'].iloc[0]
-                    val_atual = df_graf['valor'].iloc[-1]
-                    st.markdown(f"<span style='font-size:11px; font-weight:600; color:#A0AEC0; text-transform:uppercase;'>{param_sel}</span><br><span style='font-size:26px; font-weight:600; color:#2D3748;'>{val_atual}</span> <span style='font-size:13px; color:#A0AEC0;'>{df_graf['unidade'].iloc[0]}</span>", unsafe_allow_html=True)
-                    
-                    fig1 = go.Figure()
-                    fig1.add_trace(go.Scatter(
-                        x=df_graf["data_str"], y=df_graf["valor"], mode='lines+markers', line_shape='spline',
-                        marker=dict(size=8, color='#2B6CB0', line=dict(width=2, color='white')),
-                        line=dict(color='#4299E1', width=2.5), fill='tozeroy', fillcolor='rgba(66,153,225,0.08)'
-                    ))
-                    if pd.notnull(limite): fig1.add_hline(y=limite, line_dash="dash", line_color="#A0AEC0", annotation_text="Limite")
-                    fig1.update_layout(
-                        plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=240, 
-                        yaxis=dict(showgrid=True, gridcolor='#F7FAFC', zeroline=False), xaxis=dict(showgrid=False, type='category')
-                    )
-                    st.plotly_chart(fig1, use_container_width=True)
-                else: st.info("Sem dados para este parâmetro.")
-            
-            with g2:
-                if not df_iqa.empty:
-                    iqa_atual = df_iqa['valor'].iloc[-1]
-                    status_nome, status_cor, status_bg = classificar_iqa(iqa_atual)
-                    
-                    st.markdown(f"""
-                        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
-                            <div>
-                                <span style='font-size:11px; font-weight:600; color:#A0AEC0;'>ÍNDICE DE QUALIDADE DAS ÁGUAS</span><br>
-                                <span style='font-size:26px; font-weight:600; color:#2D3748;'>{iqa_atual}</span> <span style='font-size:13px; color:#A0AEC0;'>/ 100</span>
-                            </div>
-                            <span class='iqa-badge' style='background-color:{status_bg}; color:{status_cor}; border-color:{status_cor};'>{status_nome}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    fig2 = go.Figure()
-                    
-                    for nome, config in IQA_FAIXAS.items():
-                        fig2.add_hrect(y0=config["min"], y1=config["max"], fillcolor=config["cor_grafico"], opacity=1, layer="below", line_width=0)
-                    
-                    fig2.add_trace(go.Scatter(
-                        x=df_iqa["data_str"], y=df_iqa["valor"], mode='lines+markers', line_shape='spline',
-                        marker=dict(size=8, color='#276749', line=dict(width=2, color='white')),
-                        line=dict(color='#38A169', width=2.5)
-                    ))
-                    fig2.update_layout(
-                        plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=5, l=0, r=0), height=240, 
-                        yaxis=dict(showgrid=True, gridcolor='#F7FAFC', range=[0,100], zeroline=False), xaxis=dict(showgrid=False, type='category')
-                    )
-                    st.plotly_chart(fig2, use_container_width=True)
-                    
-                    legend_html = '<div style="display:flex; gap:12px; font-size:10px; color:#A0AEC0; font-weight:500; margin-top:-10px; margin-bottom: 5px;">'
-                    for nome, config in reversed(list(IQA_FAIXAS.items())):
-                        legend_html += f'<span style="display:flex; align-items:center; gap:4px;"><div style="width:7px; height:7px; border-radius:50%; background:{config["cor_texto"]};"></div> {nome}</span>'
-                    legend_html += '</div>'
-                    
-                    st.markdown(legend_html, unsafe_allow_html=True)
-                else: st.info("Sem dados de IQA para este ponto.")
-        else:
-            st.markdown("<div style='text-align: center; padding: 40px 20px; color: #A0AEC0; font-size: 14px;'>Selecione um ponto e um parâmetro nos menus acima para visualizar o histórico.</div>", unsafe_allow_html=True)
-
-    # Mapa
-    with st.container(border=True):
-        st.markdown("<h3>Mapa dos pontos de coleta</h3><p>Passe o mouse sobre os pontos para visualizar o código e o local.</p>", unsafe_allow_html=True)
-        if not df_pontos.empty:
-            url_stadia = "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237"
-            if hasattr(go, 'Scattermap'):
-                map_trace = go.Scattermap(lat=df_pontos['latitude'].astype(float), lon=df_pontos['longitude'].astype(float), mode='markers', marker=dict(size=14, color='#4299E1', opacity=0.9), text=df_pontos['codigo'] + " - " + df_pontos['local'], hoverinfo='text')
-                map_layout = dict(map=dict(style="white-bg", layers=[dict(below="traces", sourcetype="raster", source=[url_stadia])], center=dict(lat=-27.601, lon=-48.518), zoom=13.5), margin=dict(r=0, t=0, l=0, b=0), height=400, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
-            else:
-                map_trace = go.Scattermapbox(lat=df_pontos['latitude'].astype(float), lon=df_pontos['longitude'].astype(float), mode='markers', marker=dict(size=14, color='#4299E1', opacity=0.9), text=df_pontos['codigo'] + " - " + df_pontos['local'], hoverinfo='text')
-                map_layout = dict(mapbox=dict(style="white-bg", layers=[dict(below="traces", sourcetype="raster", source=[url_stadia])], center=dict(lat=-27.601, lon=-48.518), zoom=13.5), margin=dict(r=0, t=0, l=0, b=0), height=400, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
-            
-            fig_map = go.Figure(map_trace)
-            fig_map.update_layout(**map_layout)
-            st.plotly_chart(fig_map, use_container_width=True)
-        else:
-            st.info("Nenhum ponto de coleta cadastrado.")
-
-# ==========================================
-# PAINEL ADMINISTRATIVO
-# ==========================================
-if st.session_state.autenticado:
-    st.markdown("<h1>Painel Administrativo</h1>", unsafe_allow_html=True)
-    
-    if menu_admin == "Registrar Coleta":
-        with st.container(border=True):
-            st.markdown("<h3>Registrar Nova Coleta</h3><br>", unsafe_allow_html=True)
-            opcoes_pt = ["Selecione o ponto..."] + df_pontos['local'].tolist()
-            ponto_selecionado = st.selectbox("Escolha o local da amostra:", opcoes_pt)
-            
-            if ponto_selecionado != "Selecione o ponto...":
-                with st.form("form_nova_coleta"):
-                    st.markdown(f"<p>Preencha os resultados para <b>{ponto_selecionado}</b> (deixe em branco os que não foram analisados).</p>", unsafe_allow_html=True)
-                    data_am = st.date_input("Data da Amostra")
-                    st.markdown("<hr style='margin: 20px 0; border-top: 1px solid #EDF2F7;'>", unsafe_allow_html=True)
-                    
-                    inputs = {}
-                    col_i1, col_i2 = st.columns(2)
-                    for i, (_, row_pa) in enumerate(df_parametros.iterrows()):
-                        alvo = col_i1 if i % 2 == 0 else col_i2
-                        inputs[row_pa['id']] = alvo.number_input(f"{row_pa['nome']} ({row_pa['unidade']})", value=None, format="%.2f")
-                    
-                    if st.form_submit_button("Salvar Resultados"):
-                        id_ponto_sel = db.obter_id_ponto(ponto_selecionado)
-                        for param_id, valor_digitado in inputs.items():
-                            if valor_digitado is not None:
-                                db.inserir_coleta(id_ponto_sel, param_id, data_am, valor_digitado)
-                        st.success("Coleta salva com sucesso!")
-                        st.rerun()
-
-    elif menu_admin == "Gerenciar Pontos":
-        with st.container(border=True):
-            with st.form("add_ponto_novo"):
-                st.markdown("<h3>Adicionar Novo Ponto</h3><br>", unsafe_allow_html=True)
-                c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
-                cod_p = c1.text_input("Código")
-                loc_p = c2.text_input("Local")
-                lat_p = c3.number_input("Latitude", format="%.6f", value=-27.601)
-                lon_p = c4.number_input("Longitude", format="%.6f", value=-48.518)
-                if st.form_submit_button("Salvar Ponto"):
-                    db.inserir_ponto(cod_p, loc_p, lat_p, lon_p)
-                    st.rerun()
-        
-        with st.container(border=True):
-            st.markdown("<h3>Pontos Cadastrados</h3><br>", unsafe_allow_html=True)
-            ch1, ch2, ch3 = st.columns([1, 4, 2])
-            ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>CÓDIGO</span>", unsafe_allow_html=True)
-            ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>LOCAL</span>", unsafe_allow_html=True)
-            ch3.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>AÇÕES</span>", unsafe_allow_html=True)
-            st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
-            
-            for index, row in df_pontos.iterrows():
-                if st.session_state.edit_ponto == row['id']:
-                    with st.form(f"edit_pt_{row['id']}"):
-                        ce1, ce2, ce3, ce4 = st.columns([1, 2, 1, 1])
-                        ne_cod = ce1.text_input("Código", row['codigo'])
-                        ne_loc = ce2.text_input("Local", row['local'])
-                        ne_lat = ce3.number_input("Lat", value=float(row['latitude']), format="%.6f")
-                        ne_lon = ce4.number_input("Lon", value=float(row['longitude']), format="%.6f")
-                        if st.form_submit_button("Salvar Edição"):
-                            db.atualizar_ponto(row['id'], ne_cod, ne_loc, ne_lat, ne_lon)
-                            st.session_state.edit_ponto = None
-                            st.rerun()
-                else:
-                    c1, c2, c3, c4 = st.columns([1, 4, 1, 1])
-                    c1.markdown(f"<span style='font-size:14px; font-weight:500; color:#2D3748;'>{row['codigo']}</span>", unsafe_allow_html=True)
-                    c2.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['local']}</span>", unsafe_allow_html=True)
-                    if c3.button("Editar", icon=":material/edit:", key=f"ep_{row['id']}", help="Editar Ponto"): 
-                        st.session_state.edit_ponto = row['id']
-                        st.rerun()
-                    if c4.button("Excluir", icon=":material/delete:", key=f"dp_{row['id']}", help="Excluir Ponto"):
-                        db.deletar_ponto(row['id'])
-                        st.rerun()
-                    st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
-
-    elif menu_admin == "Gerenciar Parâmetros":
-        with st.container(border=True):
-            with st.form("add_param_novo"):
-                st.markdown("<h3>Adicionar Novo Parâmetro</h3><br>", unsafe_allow_html=True)
-                c1, c2, c3 = st.columns([3, 1, 2])
-                p_nome = c1.text_input("Nome do Parâmetro")
-                p_und = c2.text_input("Unidade")
-                p_lim = c3.text_input("Limite Legal (Deixe vazio se não houver)")
-                if st.form_submit_button("Salvar Parâmetro"):
-                    lim_val = float(p_lim.replace(",", ".")) if p_lim else None
-                    db.inserir_parametro(p_nome, p_und, lim_val)
-                    st.rerun()
-
-        with st.container(border=True):
-            st.markdown("<h3>Parâmetros Cadastrados</h3><br>", unsafe_allow_html=True)
-            ch1, ch2, ch3, ch4 = st.columns([3, 1, 2, 2])
-            ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>NOME</span>", unsafe_allow_html=True)
-            ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>UNID.</span>", unsafe_allow_html=True)
-            ch3.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>LIMITE</span>", unsafe_allow_html=True)
-            ch4.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>AÇÕES</span>", unsafe_allow_html=True)
-            st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
-            
-            for index, row in df_parametros.iterrows():
-                if st.session_state.edit_param == row['id']:
-                    with st.form(f"edit_pa_{row['id']}"):
-                        ce1, ce2, ce3 = st.columns([3, 1, 2])
-                        ne_nome = ce1.text_input("Nome", row['nome'])
-                        ne_und = ce2.text_input("Unidade", row['unidade'])
-                        
-                        if "IQA" in row['nome']:
-                            ne_lim = ""
-                            ce3.markdown("<div style='margin-top:28px; font-size:13px; color:#A0AEC0;'>Sem limite aplicável</div>", unsafe_allow_html=True)
-                        else:
-                            ne_lim = ce3.text_input("Limite", str(row['limite_legal']) if pd.notnull(row['limite_legal']) else "")
-                        
-                        if st.form_submit_button("Salvar Edição"):
-                            lim_val = None
-                            if ne_lim and str(ne_lim).strip():
-                                lim_val = float(ne_lim.replace(",", "."))
-                            db.atualizar_parametro(row['id'], ne_nome, ne_und, lim_val)
-                            st.session_state.edit_param = None
-                            st.rerun()
-                else:
-                    c1, c2, c3, c4, c5 = st.columns([3, 1, 2, 1, 1])
-                    c1.markdown(f"<span style='font-size:14px; font-weight:500; color:#2D3748;'>{row['nome']}</span>", unsafe_allow_html=True)
-                    c2.markdown(f"<span style='font-size:14px; color:#718096;'>{row['unidade']}</span>", unsafe_allow_html=True)
-                    c3.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['limite_legal'] if pd.notnull(row['limite_legal']) else '-'}</span>", unsafe_allow_html=True)
-                    if c4.button("Editar", icon=":material/edit:", key=f"epa_{row['id']}", help="Editar Parâmetro"): 
-                        st.session_state.edit_param = row['id']
-                        st.rerun()
-                    if c5.button("Excluir", icon=":material/delete:", key=f"dpa_{row['id']}", help="Excluir Parâmetro"):
-                        db.deletar_parametro(row['id'])
-                        st.rerun()
-                    st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
-
-    # --- ABA DE CONFIGURAÇÃO DE IQA (COM BOTÕES INDIVIDUAIS DE EDIÇÃO) ---
-    elif menu_admin == "Configurar IQA":
-        with st.container(border=True):
-            st.markdown("<h3>Faixas do Índice de Qualidade (IQA)</h3>", unsafe_allow_html=True)
-            st.markdown("<p style='margin-bottom:15px;'>Ajuste os valores mínimos e máximos (em pontos) para cada categoria de qualidade da água.</p><br>", unsafe_allow_html=True)
-            
-            ch1, ch2, ch3, ch4 = st.columns([2, 1, 1, 1])
-            ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>CATEGORIA</span>", unsafe_allow_html=True)
-            ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>MÍNIMO</span>", unsafe_allow_html=True)
-            ch3.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>MÁXIMO</span>", unsafe_allow_html=True)
-            ch4.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>AÇÃO</span>", unsafe_allow_html=True)
-            st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
-            
-            for index, row in df_faixas.iterrows():
-                if st.session_state.edit_faixa == row['id']:
-                    with st.form(f"edit_fx_{row['id']}"):
-                        ce1, ce2, ce3, ce4 = st.columns([2, 1, 1, 1])
-                        ce1.markdown(f"<div style='margin-top:28px; font-weight:600; font-size:14px; color:{row['cor_texto']};'>{row['nome']}</div>", unsafe_allow_html=True)
-                        ne_min = ce2.number_input("Mínimo", value=float(row['valor_min']))
-                        ne_max = ce3.number_input("Máximo", value=float(row['valor_max']))
-                        
-                        if st.form_submit_button("Salvar Edição"):
-                            db.atualizar_faixa_iqa(row['id'], ne_min, ne_max)
-                            st.session_state.edit_faixa = None
-                            st.rerun()
-                else:
-                    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-                    c1.markdown(f"<span style='font-size:14px; font-weight:600; color:{row['cor_texto']};'>{row['nome']}</span>", unsafe_allow_html=True)
-                    c2.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['valor_min']}</span>", unsafe_allow_html=True)
-                    c3.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['valor_max']}</span>", unsafe_allow_html=True)
-                    
-                    if c4.button("Editar", icon=":material/edit:", key=f"efx_{row['id']}", help="Editar Faixa"):
-                        st.session_state.edit_faixa = row['id']
-                        st.rerun()
-                    st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
+if st.session_state.pagina == "admin" and st.session_state.autenticado:
+    painel_admin()
+elif st.session_state.pagina == "login":
+    tela_login()
+else:
+    painel_publico()
