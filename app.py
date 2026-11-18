@@ -45,6 +45,8 @@ html, body, [data-testid="stApp"], [data-testid="stSidebar"] {
 [data-testid="stAppViewContainer"], [data-testid="stHeader"] {background:#F6F8FA;}
 [data-testid="stHeader"] {height: 2.8rem;}
 [data-testid="stMainBlockContainer"] {max-width:1280px; padding-top:2.2rem; padding-bottom:3rem;}
+.public-header-clearance {height:34px;}
+@media (max-width:700px) {.public-header-clearance {height:38px;}}
 h1,h2,h3,h4 {color:#17324D; letter-spacing:-.035em;}
 h1 {font-size:1.75rem !important; font-weight:700 !important;}
 h2 {font-size:1.20rem !important; font-weight:650 !important;}
@@ -336,6 +338,8 @@ def senha_admin():
 
 
 def cabecalho_publico():
+    # A barra superior flutuante do Streamlit não pode cobrir o botão.
+    st.markdown('<div class="public-header-clearance"></div>', unsafe_allow_html=True)
     esquerda, direita = st.columns([5, 1.4], vertical_alignment="center")
     with esquerda:
         st.markdown(marca(), unsafe_allow_html=True)
@@ -409,39 +413,18 @@ def painel_publico():
         return
 
     ids = pontos["id"].astype(int).tolist()
-    indice = {int(p["id"]): rotulo_ponto(p) for _, p in pontos.iterrows()}
     if st.session_state.get("ponto_publico") not in ids:
         st.session_state.ponto_publico = ids[0]
 
-    titulo_secao("Mapa de monitoramento")
-    col_mapa, col_detalhe = st.columns([1.9, 1], gap="medium")
-    with col_mapa:
-        escolhido_mapa = cartografia(pontos, foco_id=st.session_state.ponto_publico,
-                                    chave="mapa_publico", altura=340)
-        if escolhido_mapa is not None and escolhido_mapa != st.session_state.ponto_publico:
-            st.session_state.ponto_publico = escolhido_mapa
-            st.rerun()
-    with col_detalhe:
-        with st.container(border=True):
-            st.selectbox("Ponto", ids, format_func=lambda p: indice[p], key="ponto_publico")
-            ponto_id = st.session_state.ponto_publico
-            ponto = pontos.loc[pontos["id"] == ponto_id].iloc[0]
-            dados_pt = resultados[resultados["ponto_id"] == ponto_id] if not resultados.empty else pd.DataFrame()
-            ult_pt = formatar_data(dados_pt["data_amostra"].max()) if not dados_pt.empty else "—"
-            st.markdown(f'<span class="point-code">{txt(ponto["codigo"])}</span>', unsafe_allow_html=True)
-            if str(ponto['local']).strip() != str(ponto['codigo']).strip():
-                st.markdown(f"**{txt(ponto['local'])}**", unsafe_allow_html=True)
-            st.caption(f"Última coleta: {ult_pt}")
-            iqa_ponto = dados_pt[dados_pt["parametro"].str.startswith("IQA (", na=False)] if not dados_pt.empty else pd.DataFrame()
-            if not iqa_ponto.empty:
-                iqa_atual = iqa_ponto.sort_values(["data_amostra", "id"]).iloc[-1]
-                faixa = classificar_iqa(iqa_atual["valor"], faixas)
-                if faixa:
-                    st.markdown(f'<span class="status" style="color:{txt(faixa["cor_texto"])};background:{txt(faixa["cor_bg"])}">IQA {formatar_valor(iqa_atual["valor"])} · {txt(faixa["nome"])}</span>', unsafe_allow_html=True)
-                else:
-                    st.caption(f"IQA: {formatar_valor(iqa_atual['valor'])}")
-            else:
-                st.caption("IQA não informado.")
+    titulo_secao("Mapa dos Pontos")
+    # O próprio mapa é o seletor de pontos; não duplicar a seleção em um card lateral.
+    escolhido_mapa = cartografia(
+        pontos, foco_id=st.session_state.ponto_publico,
+        chave="mapa_publico", altura=430,
+    )
+    if escolhido_mapa is not None and escolhido_mapa != st.session_state.ponto_publico:
+        st.session_state.ponto_publico = escolhido_mapa
+        st.rerun()
 
     st.write("")
     titulo_secao("Evolução dos indicadores")
