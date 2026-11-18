@@ -682,10 +682,13 @@ def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
     if amostra_id:
         valores_existentes = {int(r["parametro_id"]): float(r["valor"])
                              for _, r in db.buscar_valores_amostra(amostra_id).iterrows()}
+    # O IQA tem campo próprio; não depende da listagem dos parâmetros laboratoriais.
+    iqa_cadastrados = parametros[parametros["nome"].apply(somente_iqa)]
+    parametros_analise = parametros[~parametros["nome"].apply(somente_iqa)]
+    valores = {}
     with st.container(border=True):
-        titulo_secao("2. Resultados da análise", "Informe apenas os parâmetros analisados. Valores em branco não são registrados.")
-        valores = {}
-        lista = list(parametros.iterrows())
+        titulo_secao("2. Resultados da análise")
+        lista = list(parametros_analise.iterrows())
         for i in range(0, len(lista), 2):
             cols = st.columns(2)
             for indice_coluna, (_, par) in enumerate(lista[i:i + 2]):
@@ -695,12 +698,24 @@ def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
                     valores[param_id] = st.number_input(
                         f"{par['nome']}{unidade}", value=valores_existentes.get(param_id),
                         key=f"{prefixo}_valor_{param_id}", format="%.5f", step=0.00001,
-                        placeholder="Não analisado", help="Deixe vazio se não houver medição.",
+                        placeholder="Não analisado",
                     )
-        preenchidos = {k: v for k, v in valores.items() if v is not None}
-        st.caption(f"{len(preenchidos)} de {len(parametros)} parâmetros preenchidos.")
+    with st.container(border=True):
+        titulo_secao("3. Índice de Qualidade da Água (IQA)")
+        if not iqa_cadastrados.empty:
+            par_iqa = iqa_cadastrados.iloc[0]
+            id_iqa = int(par_iqa["id"])
+            iqa_digitado = st.number_input(
+                "Valor do IQA (0 a 100)", min_value=0.0, max_value=100.0,
+                value=valores_existentes.get(id_iqa), step=0.1, format="%.2f",
+                placeholder="Não informado", key=f"{prefixo}_valor_{id_iqa}",
+            )
+            valores[id_iqa] = iqa_digitado
+        else:
+            st.error("O parâmetro IQA não foi encontrado no cadastro.")
+    preenchidos = {k: v for k, v in valores.items() if v is not None}
     with st.container(border=True, key=f"sticky_coleta_{prefixo}"):
-        titulo_secao("3. Conferência e registro")
+        titulo_secao("4. Conferência e registro")
         st.caption(f"Ponto: {mapa_pt[ponto]} · Data: {formatar_data(dia)} · "
                    f"Resultados informados: {len(preenchidos)}")
         a, b = st.columns([3, 1], vertical_alignment="bottom")
