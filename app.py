@@ -755,6 +755,11 @@ def editar_amostra_dialogo(amostra, pontos, parametros):
 # -----------------------------------------------------------------------------
 # Páginas administrativas.
 # -----------------------------------------------------------------------------
+def navegar_para_registro_coleta():
+    """Callback executado antes dos widgets serem instanciados no rerun."""
+    st.session_state.admin_menu = "Coletas e análises"
+
+
 def admin_visao_geral(pontos, parametros, coletas, amostras):
     st.title("Visão geral")
     st.caption("Resumo dos registros disponíveis no sistema de monitoramento.")
@@ -765,9 +770,12 @@ def admin_visao_geral(pontos, parametros, coletas, amostras):
     x4.metric("Última coleta", formatar_data(amostras["data_amostra"].max()) if not amostras.empty else "—")
     st.write("")
     acao1, acao2, _ = st.columns([1.3, 1.2, 3])
-    if acao1.button("+ Registrar coleta", type="primary", use_container_width=True):
-        st.session_state.admin_menu = "Coletas e análises"
-        st.rerun()
+    acao1.button(
+        "+ Registrar coleta",
+        type="primary",
+        use_container_width=True,
+        on_click=navegar_para_registro_coleta,
+    )
     if acao2.button("Visualizar painel público", use_container_width=True):
         st.session_state.pagina = "publico"
         st.rerun()
