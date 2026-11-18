@@ -69,7 +69,6 @@ def obter_id_ponto(local_nome):
     conn.close()
     return res[0] if res else None
 
-# O CRUD base continua igual
 def inserir_ponto(codigo, local, lat, lon):
     conn = get_conexao()
     cursor = conn.cursor()
