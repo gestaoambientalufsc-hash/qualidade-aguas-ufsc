@@ -8,6 +8,25 @@ db.inicializar_banco()
 st.set_page_config(page_title="Qualidade da Água - UFSC", layout="wide")
 
 # ==========================================
+# CONFIGURAÇÃO DINÂMICA DAS FAIXAS DO IQA
+# ==========================================
+# Você pode alterar os valores de "min" e "max" aqui. 
+# O gráfico e as etiquetas se ajustarão sozinhos!
+IQA_FAIXAS = {
+    "Péssima": {"min": 0,  "max": 20,  "cor_texto": "#E53E3E", "cor_bg": "#FFF5F5", "cor_grafico": "rgba(229, 62, 62, 0.08)"},
+    "Ruim":    {"min": 20, "max": 36,  "cor_texto": "#DD6B20", "cor_bg": "#FFF5F5", "cor_grafico": "rgba(221, 107, 32, 0.08)"},
+    "Regular": {"min": 36, "max": 51,  "cor_texto": "#D69E2E", "cor_bg": "#FFFFF0", "cor_grafico": "rgba(214, 158, 46, 0.08)"},
+    "Boa":     {"min": 51, "max": 80,  "cor_texto": "#38A169", "cor_bg": "#E6FFFA", "cor_grafico": "rgba(56, 161, 105, 0.08)"},
+    "Ótima":   {"min": 80, "max": 100, "cor_texto": "#2F855A", "cor_bg": "#F0FFF4", "cor_grafico": "rgba(47, 133, 90, 0.12)"}
+}
+
+def classificar_iqa(valor):
+    for nome, config in IQA_FAIXAS.items():
+        if config["min"] <= valor <= config["max"]:
+            return nome, config["cor_texto"], config["cor_bg"]
+    return "Indefinido", "#718096", "#EDF2F7" # Caso o valor fuja da escala 0-100
+
+# ==========================================
 # CSS CUSTOMIZADO
 # ==========================================
 st.markdown("""
@@ -23,7 +42,6 @@ st.markdown("""
     h3 { font-size: 17px !important; font-weight: 600 !important; color: #4A5568 !important; margin-bottom: 0px !important;}
     p { font-size: 14px !important; color: #718096 !important; }
     
-    /* Estilizando os containers nativos do Streamlit para agirem como Cards */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #FFFFFF; 
         border-radius: 16px !important; 
@@ -38,6 +56,11 @@ st.markdown("""
     .metric-title { font-size: 11px; text-transform: uppercase; color: #4A5568; font-weight: 600; margin-bottom: 8px;}
     .metric-value { font-size: 32px; font-weight: 600; color: #2D3748; margin: 0; line-height: 1;}
     
+    .iqa-badge {
+        font-size: 11px; font-weight: 600; padding: 4px 10px; 
+        border-radius: 12px; border: 1px solid; display: inline-block;
+    }
+
     .stButton>button { 
         background-color: #F7FAFC !important; 
         color: #4A5568 !important; 
@@ -50,8 +73,7 @@ st.markdown("""
     .stButton>button:hover { background-color: #EDF2F7 !important; border-color: #CBD5E0 !important;}
     
     .stSelectbox div[data-baseweb="select"], .stTextInput input, .stNumberInput input, .stDateInput input { 
-        border-radius: 8px !important; 
-        border: 1px solid #E2E8F0;
+        border-radius: 8px !important; border: 1px solid #E2E8F0;
     }
     
     .logo-container { display: flex; gap: 12px; margin-bottom: 20px; }
@@ -111,12 +133,10 @@ if not st.session_state.autenticado:
     st.markdown("<h1>Monitoramento Qualidade de Água Córregos UFSC</h1>", unsafe_allow_html=True)
     st.markdown("<p style='margin-bottom: 25px;'>Histórico de coletas, comparação com a legislação ambiental e evolução do Índice de Qualidade das Águas no campus Florianópolis.</p>", unsafe_allow_html=True)
     
-    # Métricas
     c_met1, c_met2, c_met3 = st.columns(3)
     with c_met1: st.markdown(f'<div class="metric-box-green"><div class="metric-title">Pontos Monitorados</div><div class="metric-value">{len(df_pontos)}</div></div>', unsafe_allow_html=True)
     with c_met2: st.markdown(f'<div class="metric-box-blue"><div class="metric-title">Análises Registradas</div><div class="metric-value">{len(df_coletas)}</div></div>', unsafe_allow_html=True)
     with c_met3: st.markdown(f'<div class="metric-box-cream"><div class="metric-title">Última Coleta</div><div class="metric-value">{ult_coleta}</div></div>', unsafe_allow_html=True)
-    
     st.markdown("<br>", unsafe_allow_html=True)
 
     # Análise Temporal
@@ -124,7 +144,7 @@ if not st.session_state.autenticado:
         col_tit, col_sel1, col_sel2 = st.columns([2, 1, 1])
         with col_tit:
             st.markdown("<h3>Análise temporal</h3>", unsafe_allow_html=True)
-            st.markdown("<p>Evolução do parâmetro escolhido frente ao limite legal e o IQA.</p>", unsafe_allow_html=True)
+            st.markdown("<p>Evolução do parâmetro escolhido frente ao limite legal e o IQA do ponto.</p>", unsafe_allow_html=True)
         
         opcoes_pontos = ["Selecione o ponto..."] + df_pontos['local'].tolist() if not df_pontos.empty else ["Selecione o ponto..."]
         ponto_sel = col_sel1.selectbox("Ponto", opcoes_pontos, label_visibility="collapsed")
@@ -145,41 +165,71 @@ if not st.session_state.autenticado:
                 if not df_graf.empty:
                     limite = df_graf['limite_legal'].iloc[0]
                     val_atual = df_graf['valor'].iloc[-1]
-                    st.markdown(f"<span style='font-size:11px; font-weight:600; color:#718096;'>{param_sel.upper()}</span><br><span style='font-size:28px; font-weight:600; color:#2D3748;'>{val_atual}</span> <span style='font-size:13px; color:#718096;'>{df_graf['unidade'].iloc[0]}</span>", unsafe_allow_html=True)
+                    st.markdown(f"<span style='font-size:11px; font-weight:600; color:#A0AEC0; text-transform:uppercase;'>{param_sel}</span><br><span style='font-size:26px; font-weight:600; color:#2D3748;'>{val_atual}</span> <span style='font-size:13px; color:#A0AEC0;'>{df_graf['unidade'].iloc[0]}</span>", unsafe_allow_html=True)
                     
                     fig1 = go.Figure()
                     fig1.add_trace(go.Scatter(
-                        x=df_graf["data_str"], y=df_graf["valor"], mode='lines+markers', 
-                        marker=dict(size=10, color='#2B6CB0', line=dict(width=2, color='white')),
-                        line=dict(color='#4299E1', width=2), fill='tozeroy', fillcolor='rgba(66,153,225,0.1)'
+                        x=df_graf["data_str"], y=df_graf["valor"], mode='lines+markers', line_shape='spline',
+                        marker=dict(size=8, color='#2B6CB0', line=dict(width=2, color='white')),
+                        line=dict(color='#4299E1', width=2.5), fill='tozeroy', fillcolor='rgba(66,153,225,0.08)'
                     ))
                     if pd.notnull(limite): fig1.add_hline(y=limite, line_dash="dash", line_color="#A0AEC0", annotation_text="Limite")
                     fig1.update_layout(
-                        plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, 
-                        yaxis=dict(showgrid=True, gridcolor='#EDF2F7'), xaxis=dict(showgrid=False, type='category')
+                        plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=240, 
+                        yaxis=dict(showgrid=True, gridcolor='#F7FAFC', zeroline=False), xaxis=dict(showgrid=False, type='category')
                     )
                     st.plotly_chart(fig1, use_container_width=True)
                 else: st.info("Sem dados para este parâmetro.")
             
             with g2:
                 if not df_iqa.empty:
-                    st.markdown(f"<span style='font-size:11px; font-weight:600; color:#718096;'>ÍNDICE DE QUALIDADE (IQA)</span><br><span style='font-size:28px; font-weight:600; color:#2D3748;'>{df_iqa['valor'].iloc[-1]}</span> <span style='font-size:13px; color:#718096;'>/ 100</span>", unsafe_allow_html=True)
+                    iqa_atual = df_iqa['valor'].iloc[-1]
+                    status_nome, status_cor, status_bg = classificar_iqa(iqa_atual)
+                    
+                    # Cabeçalho do IQA com Badge lado a lado
+                    st.markdown(f"""
+                        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+                            <div>
+                                <span style='font-size:11px; font-weight:600; color:#A0AEC0;'>ÍNDICE DE QUALIDADE DAS ÁGUAS</span><br>
+                                <span style='font-size:26px; font-weight:600; color:#2D3748;'>{iqa_atual}</span> <span style='font-size:13px; color:#A0AEC0;'>/ 100</span>
+                            </div>
+                            <span class='iqa-badge' style='background-color:{status_bg}; color:{status_cor}; border-color:{status_cor};'>{status_nome}</span>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
                     fig2 = go.Figure()
+                    
+                    # LER AS FAIXAS DINAMICAMENTE DO DICIONÁRIO IQA_FAIXAS PARA PINTAR O FUNDO
+                    for nome, config in IQA_FAIXAS.items():
+                        fig2.add_hrect(
+                            y0=config["min"], y1=config["max"], 
+                            fillcolor=config["cor_grafico"], 
+                            opacity=1, layer="below", line_width=0
+                        )
+                    
                     fig2.add_trace(go.Scatter(
-                        x=df_iqa["data_str"], y=df_iqa["valor"], mode='lines+markers', 
-                        marker=dict(size=10, color='#2F855A', line=dict(width=2, color='white')),
-                        line=dict(color='#48BB78', width=2), fill='tozeroy', fillcolor='rgba(72,187,120,0.1)'
+                        x=df_iqa["data_str"], y=df_iqa["valor"], mode='lines+markers', line_shape='spline',
+                        marker=dict(size=8, color='#276749', line=dict(width=2, color='white')),
+                        line=dict(color='#38A169', width=2.5)
                     ))
                     fig2.update_layout(
-                        plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, 
-                        yaxis=dict(showgrid=True, gridcolor='#EDF2F7', range=[0,100]), xaxis=dict(showgrid=False, type='category')
+                        plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=5, l=0, r=0), height=240, 
+                        yaxis=dict(showgrid=True, gridcolor='#F7FAFC', range=[0,100], zeroline=False), xaxis=dict(showgrid=False, type='category')
                     )
                     st.plotly_chart(fig2, use_container_width=True)
+                    
+                    # Legenda de Cores IQA minimalista (Renderizada baseada nas cores configuradas no dict)
+                    legend_html = '<div style="display:flex; gap:12px; font-size:10px; color:#A0AEC0; font-weight:500; margin-top:-10px; margin-bottom: 5px;">'
+                    for nome, config in reversed(IQA_FAIXAS.items()): # Reversed para mostrar de Ótima até Péssima
+                        legend_html += f'<span style="display:flex; align-items:center; gap:4px;"><div style="width:7px; height:7px; border-radius:50%; background:{config["cor_texto"]};"></div> {nome}</span>'
+                    legend_html += '</div>'
+                    
+                    st.markdown(legend_html, unsafe_allow_html=True)
                 else: st.info("Sem dados de IQA para este ponto.")
         else:
             st.markdown("<div style='text-align: center; padding: 40px 20px; color: #A0AEC0; font-size: 14px;'>Selecione um ponto e um parâmetro nos menus acima para visualizar o histórico.</div>", unsafe_allow_html=True)
 
-    # Mapa - Sem {r} na URL para renderizar os tiles corretamente
+    # Mapa
     with st.container(border=True):
         st.markdown("<h3>Mapa dos pontos de coleta</h3><p>Passe o mouse sobre os pontos para visualizar o código e o local.</p>", unsafe_allow_html=True)
         
@@ -193,11 +243,7 @@ if not st.session_state.autenticado:
                     text=df_pontos['codigo'] + " - " + df_pontos['local'], hoverinfo='text'
                 )
                 map_layout = dict(
-                    map=dict(
-                        style="white-bg",
-                        layers=[dict(below="traces", sourcetype="raster", source=[url_stadia])],
-                        center=dict(lat=-27.601, lon=-48.518), zoom=13.5
-                    ),
+                    map=dict(style="white-bg", layers=[dict(below="traces", sourcetype="raster", source=[url_stadia])], center=dict(lat=-27.601, lon=-48.518), zoom=13.5),
                     margin=dict(r=0, t=0, l=0, b=0), height=400, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF"
                 )
             else:
@@ -207,11 +253,7 @@ if not st.session_state.autenticado:
                     text=df_pontos['codigo'] + " - " + df_pontos['local'], hoverinfo='text'
                 )
                 map_layout = dict(
-                    mapbox=dict(
-                        style="white-bg",
-                        layers=[dict(below="traces", sourcetype="raster", source=[url_stadia])],
-                        center=dict(lat=-27.601, lon=-48.518), zoom=13.5
-                    ),
+                    mapbox=dict(style="white-bg", layers=[dict(below="traces", sourcetype="raster", source=[url_stadia])], center=dict(lat=-27.601, lon=-48.518), zoom=13.5),
                     margin=dict(r=0, t=0, l=0, b=0), height=400, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF"
                 )
 
@@ -229,8 +271,7 @@ if st.session_state.autenticado:
     
     if menu_admin == "Registrar Coleta":
         with st.container(border=True):
-            st.markdown("<h3>Registrar Nova Coleta</h3>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("<h3>Registrar Nova Coleta</h3><br>", unsafe_allow_html=True)
             
             opcoes_pt = ["Selecione o ponto..."] + df_pontos['local'].tolist()
             ponto_selecionado = st.selectbox("Escolha o local da amostra:", opcoes_pt)
@@ -259,8 +300,7 @@ if st.session_state.autenticado:
     elif menu_admin == "Gerenciar Pontos":
         with st.container(border=True):
             with st.form("add_ponto_novo"):
-                st.markdown("<h3>Adicionar Novo Ponto</h3>", unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("<h3>Adicionar Novo Ponto</h3><br>", unsafe_allow_html=True)
                 c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
                 cod_p = c1.text_input("Código")
                 loc_p = c2.text_input("Local")
@@ -271,9 +311,7 @@ if st.session_state.autenticado:
                     st.rerun()
         
         with st.container(border=True):
-            st.markdown("<h3>Pontos Cadastrados</h3>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            
+            st.markdown("<h3>Pontos Cadastrados</h3><br>", unsafe_allow_html=True)
             ch1, ch2, ch3 = st.columns([1, 4, 2])
             ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>CÓDIGO</span>", unsafe_allow_html=True)
             ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>LOCAL</span>", unsafe_allow_html=True)
@@ -296,7 +334,6 @@ if st.session_state.autenticado:
                     c1, c2, c3, c4 = st.columns([1, 4, 1, 1])
                     c1.markdown(f"<span style='font-size:14px; font-weight:500; color:#2D3748;'>{row['codigo']}</span>", unsafe_allow_html=True)
                     c2.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['local']}</span>", unsafe_allow_html=True)
-                    
                     if c3.button("Editar", icon=":material/edit:", key=f"ep_{row['id']}", help="Editar Ponto"): 
                         st.session_state.edit_ponto = row['id']
                         st.rerun()
@@ -308,8 +345,7 @@ if st.session_state.autenticado:
     elif menu_admin == "Gerenciar Parâmetros":
         with st.container(border=True):
             with st.form("add_param_novo"):
-                st.markdown("<h3>Adicionar Novo Parâmetro</h3>", unsafe_allow_html=True)
-                st.markdown("<br>", unsafe_allow_html=True)
+                st.markdown("<h3>Adicionar Novo Parâmetro</h3><br>", unsafe_allow_html=True)
                 c1, c2, c3 = st.columns([3, 1, 2])
                 p_nome = c1.text_input("Nome do Parâmetro")
                 p_und = c2.text_input("Unidade")
@@ -320,9 +356,7 @@ if st.session_state.autenticado:
                     st.rerun()
 
         with st.container(border=True):
-            st.markdown("<h3>Parâmetros Cadastrados</h3>", unsafe_allow_html=True)
-            st.markdown("<br>", unsafe_allow_html=True)
-            
+            st.markdown("<h3>Parâmetros Cadastrados</h3><br>", unsafe_allow_html=True)
             ch1, ch2, ch3, ch4 = st.columns([3, 1, 2, 2])
             ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>NOME</span>", unsafe_allow_html=True)
             ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>UNID.</span>", unsafe_allow_html=True)
@@ -347,7 +381,6 @@ if st.session_state.autenticado:
                     c1.markdown(f"<span style='font-size:14px; font-weight:500; color:#2D3748;'>{row['nome']}</span>", unsafe_allow_html=True)
                     c2.markdown(f"<span style='font-size:14px; color:#718096;'>{row['unidade']}</span>", unsafe_allow_html=True)
                     c3.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['limite_legal'] if pd.notnull(row['limite_legal']) else '-'}</span>", unsafe_allow_html=True)
-                    
                     if c4.button("Editar", icon=":material/edit:", key=f"epa_{row['id']}", help="Editar Parâmetro"): 
                         st.session_state.edit_param = row['id']
                         st.rerun()
