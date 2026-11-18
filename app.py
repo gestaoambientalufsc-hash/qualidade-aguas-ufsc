@@ -6,6 +6,8 @@ Senha administrativa padrão: 1234
 from __future__ import annotations
 
 import hmac
+import base64
+from pathlib import Path
 import html
 import os
 import time
@@ -83,11 +85,14 @@ button[kind="primaryFormSubmit"] {background:#167D86 !important; color:white !im
 [data-testid="stDataFrame"] {border-radius:10px; overflow:hidden;}
 [data-testid="stPlotlyChart"] {border-radius:10px;}
 section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bottom:.05rem;}
-.brand {display:flex;align-items:center;gap:12px;}
-.brand-icon {width:42px;height:42px;display:grid;place-items:center;background:#EAF4F4;
- border-radius:11px;color:#167D86;flex-shrink:0;}
-.brand-title {font-size:15px;font-weight:700;color:#17324D;line-height:1.25;}
-.brand-sub {font-size:11px;color:#64748B;margin-top:4px;}
+.brand {display:flex;align-items:center;gap:16px;min-height:104px;}
+.brand-logo {width:92px;height:92px;object-fit:contain;display:block;flex-shrink:0;border-radius:5px;}
+.brand-title {font-size:21px;font-weight:700;color:#17324D;line-height:1.2;}
+.brand-sub {font-size:13px;color:#64748B;margin-top:6px;}
+[data-testid="stSidebar"] .brand {min-height:75px;gap:10px;}
+[data-testid="stSidebar"] .brand-logo {width:65px;height:65px;}
+[data-testid="stSidebar"] .brand-title {font-size:15px;}
+[data-testid="stSidebar"] .brand-sub {font-size:11px;}
 .eyebrow {font-size:.73rem;letter-spacing:.07em;text-transform:uppercase;
  color:#167D86;font-weight:700;margin-bottom:6px;}
 .lead {font-size:.88rem;color:#64748B;max-width:820px;margin:0 0 8px;}
@@ -108,7 +113,9 @@ section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bott
  h1 {font-size:1.35rem !important;}
  [data-testid="stMetric"] {min-height:92px;padding:12px;}
  [data-testid="stMetricValue"] {font-size:1.33rem !important;}
- .brand-title {font-size:13px;}
+ .brand-title {font-size:16px;}
+ .brand-logo {width:70px;height:70px;}
+ .brand {min-height:80px;gap:10px;}
 }
 </style>
 """, unsafe_allow_html=True)
@@ -125,13 +132,18 @@ def titulo_secao(titulo, subtitulo=""):
 
 
 def marca():
-    return """<div class="brand"><div class="brand-icon">
-      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
-      fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 22a8 8 0 0 0 8-8c0-5-8-12-8-12S4 9 4 14a8 8 0 0 0 8 8Z"/>
-      <path d="M8 15a4 4 0 0 0 4 4"/></svg>
-      </div><div><div class="brand-title">Monitoramento das Águas</div>
-      <div class="brand-sub">UFSC · Gestão Ambiental</div></div></div>"""
+    """Exibe o logotipo local em todas as telas, inclusive no Streamlit Cloud."""
+    caminho = Path(__file__).resolve().parent / "assets" / "logo-gestao-ambiental.jpg"
+    if caminho.is_file():
+        imagem = base64.b64encode(caminho.read_bytes()).decode("ascii")
+        logo = f'<img class="brand-logo" src="data:image/jpeg;base64,{imagem}" alt="Gestão Ambiental UFSC">'
+    else:
+        logo = '<div class="brand-logo" style="background:#EAF4F4"></div>'
+    return (
+        '<div class="brand">' + logo +
+        '<div><div class="brand-title">Gestão das Águas</div>'
+        '<div class="brand-sub">UFSC · Gestão Ambiental</div></div></div>'
+    )
 
 
 def cor_status(nome):
