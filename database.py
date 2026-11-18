@@ -69,14 +69,7 @@ def obter_id_ponto(local_nome):
     conn.close()
     return res[0] if res else None
 
-def obter_id_param(nome_param):
-    conn = get_conexao()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM parametros WHERE nome = ?", (nome_param,))
-    res = cursor.fetchone()
-    conn.close()
-    return res[0] if res else None
-
+# O CRUD base continua igual
 def inserir_ponto(codigo, local, lat, lon):
     conn = get_conexao()
     cursor = conn.cursor()
