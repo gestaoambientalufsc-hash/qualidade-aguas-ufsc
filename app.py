@@ -315,11 +315,11 @@ if "bloqueio_ate" not in st.session_state:
 
 
 def senha_admin():
-    senha = os.environ.get("ADMIN_PASSWORD", "")
+    senha = os.environ.get("ADMIN_PASSWORD", "1234")
     if senha:
         return senha
     try:
-        return st.secrets.get("ADMIN_PASSWORD", "")
+        return st.secrets.get("ADMIN_PASSWORD", "1234")
     except (FileNotFoundError, KeyError):
         return ""
 
