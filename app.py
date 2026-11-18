@@ -1,8 +1,7 @@
 """Portal público + administração de qualidade da água — UFSC.
 
 Iniciar: streamlit run app.py
-Acesso administrativo: definir ADMIN_PASSWORD nas secrets do Streamlit
-ou em variável de ambiente. Nunca usar senha fixa em código-fonte.
+Senha administrativa padrão: 1234
 """
 from __future__ import annotations
 
@@ -22,9 +21,8 @@ import database as db
 
 st.set_page_config(
     page_title="Monitoramento das Águas | UFSC",
-    page_icon="💧",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 db.inicializar_banco()
 
@@ -36,6 +34,7 @@ TEAL = "#167D86"
 MUTED = "#64748B"
 BORDER = "#E2E8EE"
 SAND = "#F5F8FA"
+MAP_API_KEY = "af1b2140-1a60-4eec-9983-9406fa69f237"
 
 st.markdown("""
 <style>
@@ -44,8 +43,8 @@ html, body, [data-testid="stApp"], [data-testid="stSidebar"] {
   font-family: 'Montserrat', sans-serif;
 }
 [data-testid="stAppViewContainer"], [data-testid="stHeader"] {background:#F6F8FA;}
-[data-testid="stHeader"] {height: 2.2rem;}
-[data-testid="stMainBlockContainer"] {max-width:1280px; padding-top:1.25rem; padding-bottom:3rem;}
+[data-testid="stHeader"] {height: 2.8rem;}
+[data-testid="stMainBlockContainer"] {max-width:1280px; padding-top:2.2rem; padding-bottom:3rem;}
 h1,h2,h3,h4 {color:#17324D; letter-spacing:-.035em;}
 h1 {font-size:1.75rem !important; font-weight:700 !important;}
 h2 {font-size:1.20rem !important; font-weight:650 !important;}
@@ -169,6 +168,12 @@ def somente_iqa(nome):
     return str(nome).startswith("IQA (")
 
 
+def rotulo_ponto(ponto):
+    codigo = str(ponto["codigo"]).strip()
+    local = str(ponto["local"]).strip()
+    return local if codigo == local else f"{codigo} · {local}"
+
+
 def verificar_conformidade(valor, parametro):
     """Conformidade SOMENTE com referência revisada e aplicabilidade informada."""
     tipo = parametro.get("tipo_limite", "nenhum")
@@ -213,11 +218,16 @@ def cartografia(pontos, foco_id=None, selecionar=True, chave="mapa_publico", alt
         return None
     centro = [float(validos["latitude"].mean()), float(validos["longitude"].mean())]
     m = folium.Map(location=centro, zoom_start=14 if len(validos) < 3 else 12,
-                   tiles="CartoDB positron", control_scale=True)
+                   tiles=None, control_scale=True)
+    folium.TileLayer(
+        tiles=f"https://tiles.stadiamaps.com/tiles/alidade_smooth/{{z}}/{{x}}/{{y}}{{r}}.png?api_key={MAP_API_KEY}",
+        attr='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        name="Base"
+    ).add_to(m)
     correspondencia = {}
     for _, item in validos.iterrows():
         item_id = int(item["id"])
-        legenda = f"{item['codigo']} — {item['local']}"
+        legenda = rotulo_ponto(item)
         correspondencia[legenda] = item_id
         folium.CircleMarker(
             location=[float(item["latitude"]), float(item["longitude"])],
@@ -232,8 +242,6 @@ def cartografia(pontos, foco_id=None, selecionar=True, chave="mapa_publico", alt
     retorno = st_folium(m, height=altura, use_container_width=True,
                         key=chave, returned_objects=["last_object_clicked_tooltip", "last_object_clicked_count"] if selecionar else [])
     if selecionar and retorno:
-        # O último clique fica armazenado no componente. Não deve sobrescrever
-        # o selectbox quando o usuário troca de ponto manualmente depois.
         contador = retorno.get("last_object_clicked_count")
         if contador is not None and contador != st.session_state.get(f"{chave}_ultimo_contador"):
             st.session_state[f"{chave}_ultimo_contador"] = contador
@@ -315,13 +323,16 @@ if "bloqueio_ate" not in st.session_state:
 
 
 def senha_admin():
-    senha = os.environ.get("ADMIN_PASSWORD", "1234")
+    senha = os.environ.get("ADMIN_PASSWORD", "")
     if senha:
         return senha
     try:
-        return st.secrets.get("ADMIN_PASSWORD", "1234")
+        senha_secret = st.secrets.get("ADMIN_PASSWORD", "")
+        if senha_secret:
+            return senha_secret
     except (FileNotFoundError, KeyError):
-        return ""
+        pass
+    return "1234"
 
 
 def cabecalho_publico():
@@ -329,7 +340,7 @@ def cabecalho_publico():
     with esquerda:
         st.markdown(marca(), unsafe_allow_html=True)
     with direita:
-        if st.button("Área administrativa", key="entrar_admin", use_container_width=True):
+        if st.button("Administração", key="entrar_admin", use_container_width=True):
             st.session_state.pagina = "login" if not st.session_state.autenticado else "admin"
             st.rerun()
     st.divider()
@@ -340,21 +351,18 @@ def tela_login():
     with cabecalho_login:
         st.markdown(marca(), unsafe_allow_html=True)
     st.divider()
-    esq, meio, dir_ = st.columns([1, 1.5, 1])
+    esq, meio, dir_ = st.columns([1, 1.35, 1])
     with meio:
         with st.container(border=True):
             st.subheader("Acesso administrativo")
-            st.caption("Área restrita para cadastro e gestão de análises.")
             senha_config = senha_admin()
-            if not senha_config:
-                st.error("A senha administrativa não foi configurada. Defina ADMIN_PASSWORD nas secrets do Streamlit ou no ambiente.")
             restante = max(0, int(st.session_state.bloqueio_ate - time.monotonic()))
             if restante:
-                st.warning(f"Muitas tentativas. Tente novamente em {restante} segundos.")
+                st.warning(f"Tente novamente em {restante} segundos.")
             with st.form("login_admin"):
-                senha_informada = st.text_input("Senha de acesso", type="password", autocomplete="current-password")
+                senha_informada = st.text_input("Senha", type="password", autocomplete="current-password")
                 enviar = st.form_submit_button("Entrar", type="primary", use_container_width=True,
-                                               disabled=not senha_config or restante > 0)
+                                               disabled=restante > 0)
             if enviar:
                 if hmac.compare_digest(senha_informada, senha_config):
                     st.session_state.autenticado = True
@@ -367,7 +375,7 @@ def tela_login():
                     st.session_state.bloqueio_ate = time.monotonic() + 30
                     st.session_state.falhas_login = 0
                 st.error("Senha incorreta.")
-            if st.button("Voltar ao painel público", use_container_width=True):
+            if st.button("Voltar", use_container_width=True):
                 st.session_state.pagina = "publico"
                 st.rerun()
 
@@ -380,149 +388,93 @@ def painel_publico():
     parametros = db.buscar_parametros(ativos=True)
     resultados = db.buscar_coletas()
     faixas = db.buscar_faixas_iqa()
-    configuracao = db.buscar_configuracao_iqa()
 
     cabecalho_publico()
     st.markdown('<div class="eyebrow">Monitoramento ambiental · Campus Florianópolis</div>', unsafe_allow_html=True)
     st.title("Qualidade da água nos córregos da UFSC")
-    st.markdown('<div class="lead">Explore os pontos de coleta, consulte os resultados das análises e acompanhe a evolução dos indicadores de qualidade da água.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="lead">Consulte os pontos de coleta e acompanhe a evolução dos indicadores.</div>', unsafe_allow_html=True)
     st.write("")
 
     pontos_com_dados = resultados["ponto_id"].nunique() if not resultados.empty else 0
     ultimo_dia = formatar_data(resultados["data_amostra"].max()) if not resultados.empty else "—"
-    resultados_iqa = resultados[resultados["parametro"].str.startswith("IQA (", na=False)].copy() if not resultados.empty else pd.DataFrame()
-    total_iqa = "—"
-    if not resultados_iqa.empty:
-        topo = resultados_iqa.sort_values(["data_amostra", "id"]).iloc[-1]
-        total_iqa = formatar_valor(topo["valor"])
     a, b, c, d = st.columns(4)
     a.metric("Pontos cadastrados", len(pontos))
     b.metric("Pontos com medições", pontos_com_dados)
-    c.metric("Resultados de parâmetros", len(resultados))
+    c.metric("Resultados", len(resultados))
     d.metric("Última coleta", ultimo_dia)
 
     st.write("")
     if pontos.empty:
-        st.info("Nenhum ponto ativo cadastrado. O monitoramento será exibido assim que os dados forem publicados.")
+        st.info("Nenhum ponto ativo cadastrado.")
         return
 
     ids = pontos["id"].astype(int).tolist()
-    indice = {int(p["id"]): f"{p['codigo']} · {p['local']}" for _, p in pontos.iterrows()}
+    indice = {int(p["id"]): rotulo_ponto(p) for _, p in pontos.iterrows()}
     if st.session_state.get("ponto_publico") not in ids:
         st.session_state.ponto_publico = ids[0]
 
-    titulo_secao("Mapa de monitoramento", "Clique em um marcador para selecionar o ponto ou use o seletor ao lado.")
-    col_mapa, col_detalhe = st.columns([1.85, 1], gap="medium")
+    titulo_secao("Mapa de monitoramento")
+    col_mapa, col_detalhe = st.columns([1.9, 1], gap="medium")
     with col_mapa:
         escolhido_mapa = cartografia(pontos, foco_id=st.session_state.ponto_publico,
-                                    chave="mapa_publico", altura=330)
+                                    chave="mapa_publico", altura=340)
         if escolhido_mapa is not None and escolhido_mapa != st.session_state.ponto_publico:
             st.session_state.ponto_publico = escolhido_mapa
             st.rerun()
     with col_detalhe:
         with st.container(border=True):
-            st.selectbox("Ponto de coleta", ids, format_func=lambda p: indice[p], key="ponto_publico")
+            st.selectbox("Ponto", ids, format_func=lambda p: indice[p], key="ponto_publico")
             ponto_id = st.session_state.ponto_publico
             ponto = pontos.loc[pontos["id"] == ponto_id].iloc[0]
             dados_pt = resultados[resultados["ponto_id"] == ponto_id] if not resultados.empty else pd.DataFrame()
             ult_pt = formatar_data(dados_pt["data_amostra"].max()) if not dados_pt.empty else "—"
             st.markdown(f'<span class="point-code">{txt(ponto["codigo"])}</span>', unsafe_allow_html=True)
-            st.markdown(f"**{txt(ponto['local'])}**", unsafe_allow_html=True)
+            if str(ponto['local']).strip() != str(ponto['codigo']).strip():
+                st.markdown(f"**{txt(ponto['local'])}**", unsafe_allow_html=True)
             st.caption(f"Última coleta: {ult_pt}")
             iqa_ponto = dados_pt[dados_pt["parametro"].str.startswith("IQA (", na=False)] if not dados_pt.empty else pd.DataFrame()
             if not iqa_ponto.empty:
                 iqa_atual = iqa_ponto.sort_values(["data_amostra", "id"]).iloc[-1]
                 faixa = classificar_iqa(iqa_atual["valor"], faixas)
                 if faixa:
-                    st.markdown(f'**IQA informado:** {formatar_valor(iqa_atual["valor"])} / 100 &nbsp;'
-                                f'<span class="status" style="color:{txt(faixa["cor_texto"])};'
-                                f'background:{txt(faixa["cor_bg"])}">{txt(faixa["nome"])}</span>',
-                                unsafe_allow_html=True)
+                    st.markdown(f'<span class="status" style="color:{txt(faixa["cor_texto"])};background:{txt(faixa["cor_bg"])}">IQA {formatar_valor(iqa_atual["valor"])} · {txt(faixa["nome"])}</span>', unsafe_allow_html=True)
                 else:
-                    st.caption("IQA fora do intervalo configurado.")
+                    st.caption(f"IQA: {formatar_valor(iqa_atual['valor'])}")
             else:
-                st.caption("IQA: ainda não informado para este ponto.")
-            st.caption("A classificação do IQA é distinta da avaliação de conformidade legal.")
+                st.caption("IQA não informado.")
 
     st.write("")
-    titulo_secao("Evolução dos indicadores", "Compare medições ao longo do tempo e visualize as referências revisadas, quando disponíveis.")
+    titulo_secao("Evolução dos indicadores")
+    ponto_id = st.session_state.ponto_publico
+    dados_pt = resultados[resultados["ponto_id"] == ponto_id] if not resultados.empty else pd.DataFrame()
     with st.container(border=True):
-        ponto_id = st.session_state.ponto_publico
-        dados_pt = resultados[resultados["ponto_id"] == ponto_id] if not resultados.empty else pd.DataFrame()
         outros = parametros[~parametros["nome"].apply(somente_iqa)]
-        com_dados = [int(id_) for id_ in outros["id"]
-                     if not dados_pt.empty and (dados_pt["param_id"] == id_).any()]
+        com_dados = [int(id_) for id_ in outros["id"] if not dados_pt.empty and (dados_pt["param_id"] == id_).any()]
         param_ids = com_dados or outros["id"].astype(int).tolist()
         if param_ids:
             if st.session_state.get("parametro_publico") not in param_ids:
                 st.session_state.parametro_publico = param_ids[0]
-            col_entrada, col_resumo = st.columns([1.8, 1], vertical_alignment="bottom")
-            with col_entrada:
-                st.selectbox("Parâmetro de análise", param_ids,
-                             format_func=lambda pid: outros.loc[outros["id"] == pid, "nome"].iloc[0],
-                             key="parametro_publico")
+            st.selectbox("Parâmetro", param_ids,
+                         format_func=lambda pid: outros.loc[outros["id"] == pid, "nome"].iloc[0],
+                         key="parametro_publico")
             param = outros.loc[outros["id"] == st.session_state.parametro_publico].iloc[0]
             serie = dados_pt[dados_pt["param_id"] == st.session_state.parametro_publico] if not dados_pt.empty else pd.DataFrame()
-            with col_resumo:
-                if not serie.empty:
-                    ultimo = serie.sort_values(["data_amostra", "id"]).iloc[-1]
-                    unidade = "" if param["unidade"] == "-" else f" {param['unidade']}"
-                    st.metric("Último valor medido", f"{formatar_valor(ultimo['valor'])}{unidade}")
-                else:
-                    st.caption("Nenhum resultado para o parâmetro.")
             grafico_temporal(serie, param["nome"], param)
-            if bool(param["referencia_validada"]):
-                st.caption(f"Referência: {resumo_referencia(param)} · {param['base_normativa']} · {param['aplicabilidade']}")
-            else:
-                st.caption("Referência legal não validada para o contexto deste ponto. A conformidade não será calculada.")
         else:
             st.info("Nenhum parâmetro de análise está ativo.")
 
     with st.container(border=True):
-        titulo_secao("Histórico do Índice de Qualidade da Água", "Valores de IQA registrados, classificados conforme as faixas configuradas.")
+        titulo_secao("Histórico do IQA")
         serie_iqa = dados_pt[dados_pt["parametro"].str.startswith("IQA (", na=False)] if not dados_pt.empty else pd.DataFrame()
         grafico_iqa(serie_iqa, faixas)
-        st.caption("O índice é inserido manualmente no sistema. Sem metodologia/curvas documentadas, estas faixas não comprovam o cálculo do IQA.")
 
-    st.write("")
-    titulo_secao("Resultados mais recentes", "Valores dos parâmetros na última data de coleta do ponto selecionado.")
-    if dados_pt.empty:
-        st.info("Não há resultados registrados nesse ponto.")
-    else:
-        data_ultima = dados_pt["data_amostra"].max()
-        mais_recentes = dados_pt[dados_pt["data_amostra"] == data_ultima].copy()
-        linhas = []
-        for _, r in mais_recentes.sort_values("parametro").iterrows():
-            if somente_iqa(r["parametro"]):
-                continue
-            status = verificar_conformidade(r["valor"], r)
-            linhas.append({"Parâmetro": r["parametro"], "Valor medido": float(r["valor"]),
-                           "Unidade": "—" if r["unidade"] == "-" else r["unidade"],
-                           "Referência": resumo_referencia(r), "Situação": status})
-        st.caption(f"Data de referência: {formatar_data(data_ultima)}")
-        if linhas:
-            st.dataframe(pd.DataFrame(linhas), hide_index=True, use_container_width=True,
-                         column_config={"Valor medido": st.column_config.NumberColumn(format="%.5f")})
-        else:
-            st.info("A data mais recente tem apenas IQA, sem parâmetros individuais.")
-
-    with st.expander("Entenda o IQA e as referências ambientais"):
-        st.markdown("**Índice de Qualidade da Água (IQA).** A classificação por faixas não calcula o índice. "
-                    "O valor é fornecido no cadastro de coleta e deve ter metodologia rastreável.")
-        st.write(f"**Metodologia declarada:** {configuracao.get('iqa_metodologia') or 'Não informada'}")
-        st.write(f"**Fonte:** {configuracao.get('iqa_fonte') or 'Não informada'}")
-        st.write(f"**Observações:** {configuracao.get('iqa_observacoes') or '—'}")
-        st.markdown("**Conformidade legal.** Só é mostrada quando a referência foi verificada e "
-                    "registrada com norma e aplicabilidade. A conformidade de um parâmetro "
-                    "não é equivalente à classificação geral do IQA.")
     if not resultados.empty:
         exportar = resultados[resultados["ponto_id"] == st.session_state.ponto_publico]
-        st.download_button("Baixar histórico deste ponto (CSV)",
+        st.download_button("Baixar histórico (CSV)",
                            exportar.to_csv(index=False, sep=";").encode("utf-8-sig"),
                            "historico_aguas_ufsc.csv", "text/csv", type="secondary")
     st.divider()
-    st.caption("UFSC · Gestão Ambiental | Dados de monitoramento para consulta pública. "
-               "Os resultados devem ser interpretados conforme a metodologia e as referências documentadas.")
+    st.caption("UFSC · Gestão Ambiental")
 
 
 # -----------------------------------------------------------------------------
@@ -537,7 +489,12 @@ def formulario_ponto(ponto=None):
         st.session_state.editor_lon = float(ponto["longitude"]) if ponto is not None and pd.notna(ponto["longitude"]) else -48.518
     st.caption("Selecione a localização no mapa; latitude e longitude são preenchidas automaticamente. Também é possível digitá-las.")
     mp = folium.Map(location=[st.session_state.editor_lat, st.session_state.editor_lon],
-                    zoom_start=15, tiles="CartoDB positron", control_scale=True)
+                    zoom_start=15, tiles=None, control_scale=True)
+    folium.TileLayer(
+        tiles=f"https://tiles.stadiamaps.com/tiles/alidade_smooth/{{z}}/{{x}}/{{y}}{{r}}.png?api_key={MAP_API_KEY}",
+        attr='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+        name="Base"
+    ).add_to(mp)
     folium.Marker([st.session_state.editor_lat, st.session_state.editor_lon], tooltip="Posição atual").add_to(mp)
     resultado = st_folium(mp, height=230, use_container_width=True, key=f"editor_ponto_mapa_{token}",
                          returned_objects=["last_clicked"])
@@ -985,7 +942,7 @@ def painel_admin():
         st.caption("MENU ADMINISTRATIVO")
         st.radio("Navegação", opcoes, label_visibility="collapsed", key="admin_menu")
         st.divider()
-        if st.button("↗ Ver painel público", use_container_width=True):
+        if st.button("Ver painel público", use_container_width=True):
             st.session_state.pagina = "publico"
             st.rerun()
         if st.button("Sair da administração", use_container_width=True):
