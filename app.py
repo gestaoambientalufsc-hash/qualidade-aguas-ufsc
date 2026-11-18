@@ -8,7 +8,7 @@ db.inicializar_banco()
 st.set_page_config(page_title="Qualidade da Água - UFSC", layout="wide")
 
 # ==========================================
-# CSS CUSTOMIZADO (Limpando as caixas HTML)
+# CSS CUSTOMIZADO
 # ==========================================
 st.markdown("""
     <style>
@@ -23,7 +23,7 @@ st.markdown("""
     h3 { font-size: 17px !important; font-weight: 600 !important; color: #4A5568 !important; margin-bottom: 0px !important;}
     p { font-size: 14px !important; color: #718096 !important; }
     
-    /* Estilizando os containers NATIVOS do Streamlit para agirem como Cards sem bugar o layout */
+    /* Estilizando os containers nativos do Streamlit para agirem como Cards */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background-color: #FFFFFF; 
         border-radius: 16px !important; 
@@ -119,7 +119,7 @@ if not st.session_state.autenticado:
     
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Análise Temporal - Usando Container Nativo (Sem barras em branco)
+    # Análise Temporal
     with st.container(border=True):
         col_tit, col_sel1, col_sel2 = st.columns([2, 1, 1])
         with col_tit:
@@ -179,12 +179,13 @@ if not st.session_state.autenticado:
         else:
             st.markdown("<div style='text-align: center; padding: 40px 20px; color: #A0AEC0; font-size: 14px;'>Selecione um ponto e um parâmetro nos menus acima para visualizar o histórico.</div>", unsafe_allow_html=True)
 
-    # Mapa - Estrutura à prova de falhas para o Streamlit Cloud (Plotly v5 e v6)
+    # Mapa - Sem {r} na URL para renderizar os tiles corretamente
     with st.container(border=True):
         st.markdown("<h3>Mapa dos pontos de coleta</h3><p>Passe o mouse sobre os pontos para visualizar o código e o local.</p>", unsafe_allow_html=True)
         
         if not df_pontos.empty:
-            # Verifica qual versão do Plotly está instalada no servidor
+            url_stadia = "https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237"
+            
             if hasattr(go, 'Scattermap'):
                 map_trace = go.Scattermap(
                     lat=df_pontos['latitude'].astype(float), lon=df_pontos['longitude'].astype(float),
@@ -194,7 +195,7 @@ if not st.session_state.autenticado:
                 map_layout = dict(
                     map=dict(
                         style="white-bg",
-                        layers=[dict(below="traces", sourcetype="raster", source=["https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237"])],
+                        layers=[dict(below="traces", sourcetype="raster", source=[url_stadia])],
                         center=dict(lat=-27.601, lon=-48.518), zoom=13.5
                     ),
                     margin=dict(r=0, t=0, l=0, b=0), height=400, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF"
@@ -208,7 +209,7 @@ if not st.session_state.autenticado:
                 map_layout = dict(
                     mapbox=dict(
                         style="white-bg",
-                        layers=[dict(below="traces", sourcetype="raster", source=["https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237"])],
+                        layers=[dict(below="traces", sourcetype="raster", source=[url_stadia])],
                         center=dict(lat=-27.601, lon=-48.518), zoom=13.5
                     ),
                     margin=dict(r=0, t=0, l=0, b=0), height=400, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF"
@@ -221,7 +222,7 @@ if not st.session_state.autenticado:
             st.info("Nenhum ponto de coleta cadastrado.")
 
 # ==========================================
-# PAINEL ADMINISTRATIVO (Containers Nativos)
+# PAINEL ADMINISTRATIVO
 # ==========================================
 if st.session_state.autenticado:
     st.markdown("<h1>Painel Administrativo</h1>", unsafe_allow_html=True)
