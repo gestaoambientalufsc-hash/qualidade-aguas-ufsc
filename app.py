@@ -2,15 +2,13 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import folium
-from streamlit_folium import st_folium
 import database as db
 
 db.inicializar_banco()
 st.set_page_config(page_title="Qualidade da Água - UFSC", layout="wide")
 
 # ==========================================
-# CSS CUSTOMIZADO (Montserrat, Hierarquia e Zero Espaços Vazios)
+# CSS CUSTOMIZADO (Montserrat, Hierarquia e Cores Pastel)
 # ==========================================
 st.markdown("""
     <style>
@@ -18,51 +16,56 @@ st.markdown("""
     
     * { font-family: 'Montserrat', sans-serif !important; }
     
-    /* Remoção dos espaços vazios (barras vermelhas apontadas) */
-    .block-container { padding-top: 2rem !important; padding-bottom: 1rem !important; max-width: 95% !important;}
-    div[data-testid="stVerticalBlock"] > div { margin-bottom: -10px !important; }
+    /* Remoção dos espaços vazios */
+    .block-container { padding-top: 2rem !important; padding-bottom: 2rem !important; max-width: 95% !important;}
     
-    .stApp { background-color: #F8F9FA; }
+    .stApp { background-color: #FAFAFA; }
     
     /* Hierarquia de Fontes */
-    h1 { font-size: 28px !important; font-weight: 700 !important; color: #1F2937 !important; margin-bottom: 5px !important;}
-    h3 { font-size: 18px !important; font-weight: 600 !important; color: #374151 !important; margin-bottom: 0px !important;}
-    p { font-size: 13px !important; color: #6B7280 !important; }
+    h1 { font-size: 26px !important; font-weight: 700 !important; color: #2D3748 !important; margin-bottom: 5px !important;}
+    h3 { font-size: 17px !important; font-weight: 600 !important; color: #4A5568 !important; margin-bottom: 0px !important;}
+    p { font-size: 14px !important; color: #718096 !important; }
     
-    /* Cards Arredondados */
+    /* Cards Arredondados e Limpos */
     .card { 
         background-color: #FFFFFF; 
         border-radius: 16px; 
-        padding: 20px; 
-        box-shadow: 0 2px 10px rgba(0,0,0,0.04); 
-        margin-bottom: 15px; 
-        border: 1px solid #F3F4F6; 
+        padding: 24px; 
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03); 
+        margin-bottom: 20px; 
+        border: 1px solid #EDF2F7; 
     }
     
-    /* Caixas de Métricas */
-    .metric-box-green { background-color: #F0FDF4; border-radius: 12px; padding: 15px; border: 1px solid #DCFCE7; }
-    .metric-box-blue { background-color: #F0F9FF; border-radius: 12px; padding: 15px; border: 1px solid #E0F2FE; }
-    .metric-box-cream { background-color: #FFFBEB; border-radius: 12px; padding: 15px; border: 1px solid #FEF3C7; }
-    .metric-title { font-size: 10px; text-transform: uppercase; color: #6B7280; font-weight: 600; margin-bottom: 5px;}
-    .metric-value { font-size: 28px; font-weight: 500; color: #111827; margin: 0; line-height: 1;}
+    /* Caixas de Métricas em Tons Pastel */
+    .metric-box-green { background-color: #E8F5E9; border-radius: 12px; padding: 20px; border: 1px solid #C8E6C9; }
+    .metric-box-blue { background-color: #E3F2FD; border-radius: 12px; padding: 20px; border: 1px solid #BBDEFB; }
+    .metric-box-cream { background-color: #FFF9C4; border-radius: 12px; padding: 20px; border: 1px solid #FFF59D; }
+    .metric-title { font-size: 11px; text-transform: uppercase; color: #4A5568; font-weight: 600; margin-bottom: 8px;}
+    .metric-value { font-size: 32px; font-weight: 600; color: #2D3748; margin: 0; line-height: 1;}
     
-    /* Botões Claros e Legíveis (Baixo Contraste) */
+    /* Botões Neutros (Sem cores berrantes) */
     .stButton>button { 
-        background-color: #F3F4F6 !important; 
-        color: #1F2937 !important; 
-        border-radius: 12px !important; 
-        border: 1px solid #D1D5DB !important; 
-        font-weight: 600 !important; 
-        padding: 4px 16px !important;
+        background-color: #F7FAFC !important; 
+        color: #4A5568 !important; 
+        border-radius: 8px !important; 
+        border: 1px solid #E2E8F0 !important; 
+        font-weight: 500 !important; 
+        padding: 4px 12px !important;
         transition: all 0.2s ease;
     }
-    .stButton>button:hover { background-color: #E5E7EB !important; border-color: #9CA3AF !important;}
+    .stButton>button:hover { background-color: #EDF2F7 !important; border-color: #CBD5E0 !important;}
     
     /* Inputs arredondados */
-    .stSelectbox div[data-baseweb="select"], .stTextInput input, .stNumberInput input { border-radius: 10px !important; }
+    .stSelectbox div[data-baseweb="select"], .stTextInput input, .stNumberInput input, .stDateInput input { 
+        border-radius: 8px !important; 
+        border: 1px solid #E2E8F0;
+    }
     
     .logo-container { display: flex; gap: 12px; margin-bottom: 20px; }
-    .logo-container img { height: 40px; object-fit: contain; }
+    .logo-container img { height: 45px; object-fit: contain; }
+    
+    /* Linha divisória de tabelas */
+    .row-divider { border-bottom: 1px solid #EDF2F7; margin-top: 8px; margin-bottom: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -79,9 +82,9 @@ if 'edit_coleta' not in st.session_state: st.session_state.edit_coleta = None
 # ==========================================
 with st.sidebar:
     st.markdown("""<div class="logo-container"><img src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/UFSC_logo_2.svg/120px-UFSC_logo_2.svg.png"></div>""", unsafe_allow_html=True)
-    st.markdown("<h3 style='font-size: 16px;'>Monitoramento de Qualidade de Água</h3>", unsafe_allow_html=True)
-    st.markdown("<p>Gestão das Águas - DGA/DGG/GR/UFSC<br><a href='https://gestaoambiental.ufsc.br'>gestaoambiental.ufsc.br</a></p>", unsafe_allow_html=True)
-    st.markdown("<hr style='border-top: 1px solid #EAEBE6;'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 15px;'>Monitoramento de Qualidade de Água</h3>", unsafe_allow_html=True)
+    st.markdown("<p style='font-size: 12px;'>Gestão das Águas - DGA/UFSC<br><a href='https://gestaoambiental.ufsc.br' style='color:#718096; text-decoration:none;'>gestaoambiental.ufsc.br</a></p>", unsafe_allow_html=True)
+    st.markdown("<hr style='border-top: 1px solid #EDF2F7;'>", unsafe_allow_html=True)
     
     if not st.session_state.autenticado:
         senha = st.text_input("Acesso Restrito", type="password", placeholder="Senha do Admin")
@@ -112,17 +115,17 @@ if ult_coleta != "N/A":
 # ==========================================
 if not st.session_state.autenticado:
     
-    st.markdown("<h1>Qualidade da Água nos Córregos da UFSC</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='margin-bottom: 15px;'>Histórico de coletas, comparação com a legislação ambiental e evolução do Índice de Qualidade das Águas no campus Florianópolis.</p>", unsafe_allow_html=True)
+    st.markdown("<h1>Monitoramento Qualidade de Água Córregos UFSC</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='margin-bottom: 25px;'>Histórico de coletas, comparação com a legislação ambiental e evolução do Índice de Qualidade das Águas no campus Florianópolis.</p>", unsafe_allow_html=True)
     
-    # Métricas
+    # Métricas Pastel
     c_met1, c_met2, c_met3 = st.columns(3)
     with c_met1: st.markdown(f'<div class="metric-box-green"><div class="metric-title">Pontos Monitorados</div><div class="metric-value">{len(df_pontos)}</div></div>', unsafe_allow_html=True)
     with c_met2: st.markdown(f'<div class="metric-box-blue"><div class="metric-title">Análises Registradas</div><div class="metric-value">{len(df_coletas)}</div></div>', unsafe_allow_html=True)
     with c_met3: st.markdown(f'<div class="metric-box-cream"><div class="metric-title">Última Coleta</div><div class="metric-value">{ult_coleta}</div></div>', unsafe_allow_html=True)
 
     # Análise Temporal
-    st.markdown('<div class="card" style="margin-top: 15px;">', unsafe_allow_html=True)
+    st.markdown('<div class="card" style="margin-top: 25px;">', unsafe_allow_html=True)
     col_tit, col_sel1, col_sel2 = st.columns([2, 1, 1])
     with col_tit:
         st.markdown("<h3>Análise temporal</h3>", unsafe_allow_html=True)
@@ -144,34 +147,60 @@ if not st.session_state.autenticado:
             if not df_graf.empty:
                 limite = df_graf['limite_legal'].iloc[0]
                 val_atual = df_graf['valor'].iloc[-1]
-                st.markdown(f"<span style='font-size:10px; font-weight:600; color:#6B7280;'>{param_sel.upper()}</span><br><span style='font-size:24px;'>{val_atual}</span> <span style='font-size:12px; color:#6B7280;'>{df_graf['unidade'].iloc[0]}</span>", unsafe_allow_html=True)
+                st.markdown(f"<span style='font-size:11px; font-weight:600; color:#718096;'>{param_sel.upper()}</span><br><span style='font-size:28px; font-weight:600; color:#2D3748;'>{val_atual}</span> <span style='font-size:13px; color:#718096;'>{df_graf['unidade'].iloc[0]}</span>", unsafe_allow_html=True)
                 
                 fig1 = go.Figure()
-                fig1.add_trace(go.Scatter(x=df_graf["data_amostra"], y=df_graf["valor"], mode='lines+markers', line=dict(color='#3B82F6', width=2), fill='tozeroy', fillcolor='rgba(59,130,246,0.1)'))
-                if pd.notnull(limite): fig1.add_hline(y=limite, line_dash="dash", line_color="#D1D5DB")
-                fig1.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=10, b=0, l=0, r=0), height=220, yaxis=dict(showgrid=True, gridcolor='#F3F4F6'), xaxis=dict(showgrid=False))
+                fig1.add_trace(go.Scatter(x=df_graf["data_amostra"], y=df_graf["valor"], mode='lines+markers', line=dict(color='#4299E1', width=2), fill='tozeroy', fillcolor='rgba(66,153,225,0.1)'))
+                if pd.notnull(limite): fig1.add_hline(y=limite, line_dash="dash", line_color="#A0AEC0")
+                fig1.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, yaxis=dict(showgrid=True, gridcolor='#EDF2F7'), xaxis=dict(showgrid=False))
                 st.plotly_chart(fig1, use_container_width=True)
             else: st.info("Sem dados")
         with g2:
             if not df_iqa.empty:
-                st.markdown(f"<span style='font-size:10px; font-weight:600; color:#6B7280;'>ÍNDICE DE QUALIDADE (IQA)</span><br><span style='font-size:24px;'>{df_iqa['valor'].iloc[-1]}</span> <span style='font-size:12px; color:#6B7280;'>/ 100</span>", unsafe_allow_html=True)
+                st.markdown(f"<span style='font-size:11px; font-weight:600; color:#718096;'>ÍNDICE DE QUALIDADE (IQA)</span><br><span style='font-size:28px; font-weight:600; color:#2D3748;'>{df_iqa['valor'].iloc[-1]}</span> <span style='font-size:13px; color:#718096;'>/ 100</span>", unsafe_allow_html=True)
                 fig2 = go.Figure()
-                fig2.add_trace(go.Scatter(x=df_iqa["data_amostra"], y=df_iqa["valor"], mode='lines+markers', line=dict(color='#10B981', width=2), fill='tozeroy', fillcolor='rgba(16,185,129,0.1)'))
-                fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=10, b=0, l=0, r=0), height=220, yaxis=dict(showgrid=True, gridcolor='#F3F4F6', range=[0,100]), xaxis=dict(showgrid=False))
+                fig2.add_trace(go.Scatter(x=df_iqa["data_amostra"], y=df_iqa["valor"], mode='lines+markers', line=dict(color='#48BB78', width=2), fill='tozeroy', fillcolor='rgba(72,187,120,0.1)'))
+                fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, yaxis=dict(showgrid=True, gridcolor='#EDF2F7', range=[0,100]), xaxis=dict(showgrid=False))
                 st.plotly_chart(fig2, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Mapa
+    # Mapa (Plotly - Sem Leaflet)
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown("<h3>Mapa dos pontos de coleta</h3><p>Clique no marcador azul para ver os detalhes da estação.</p>", unsafe_allow_html=True)
-    mapa = folium.Map(location=[-27.601, -48.518], zoom_start=14, tiles=f"https://tiles.stadiamaps.com/tiles/alidade_smooth/{{z}}/{{x}}/{{y}}{{r}}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237", attr="Stadia")
-    for _, row in df_pontos.iterrows():
-        folium.Marker([row['latitude'], row['longitude']], popup=folium.Popup(f"<div style='font-family:Montserrat; width:150px;'><b>{row['codigo']}</b><br>{row['local']}</div>", max_width=200), icon=folium.Icon(color='cadetblue')).add_to(mapa)
-    st_folium(mapa, width="100%", height=350)
+    st.markdown("<h3>Mapa dos pontos de coleta</h3><p>Passe o mouse sobre os pontos para visualizar o código e o local.</p>", unsafe_allow_html=True)
+    
+    if not df_pontos.empty:
+        fig_map = go.Figure(go.Scattermapbox(
+            lat=df_pontos['latitude'],
+            lon=df_pontos['longitude'],
+            mode='markers',
+            marker=go.scattermapbox.Marker(size=12, color='#4299E1', opacity=0.9),
+            text=df_pontos['codigo'] + " - " + df_pontos['local'],
+            hoverinfo='text'
+        ))
+        
+        fig_map.update_layout(
+            mapbox_style="white-bg",
+            mapbox_layers=[{
+                "below": 'traces',
+                "sourcetype": "raster",
+                "sourceattribution": "Stadia Maps",
+                "source": ["https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237"]
+            }],
+            mapbox_zoom=13.5,
+            mapbox_center={"lat": -27.601, "lon": -48.518},
+            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            height=400,
+            paper_bgcolor="#FFFFFF",
+            plot_bgcolor="#FFFFFF"
+        )
+        st.plotly_chart(fig_map, use_container_width=True)
+    else:
+        st.info("Nenhum ponto de coleta cadastrado.")
     st.markdown('</div>', unsafe_allow_html=True)
 
+
 # ==========================================
-# PAINEL ADMINISTRATIVO (Listas com Edição Lateral)
+# PAINEL ADMINISTRATIVO
 # ==========================================
 if st.session_state.autenticado:
     st.markdown("<h1>Painel Administrativo</h1>", unsafe_allow_html=True)
@@ -181,6 +210,7 @@ if st.session_state.autenticado:
     with aba_coletas:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("<h3>Registrar Nova Coleta</h3>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
         
         opcoes_pt = ["Selecione o ponto..."] + df_pontos['local'].tolist()
         ponto_selecionado = st.selectbox("Escolha o local da amostra:", opcoes_pt)
@@ -189,15 +219,15 @@ if st.session_state.autenticado:
             with st.form("form_nova_coleta"):
                 st.markdown(f"<p>Preencha os resultados laboratoriais para <b>{ponto_selecionado}</b> (deixe em branco os que não foram analisados).</p>", unsafe_allow_html=True)
                 data_am = st.date_input("Data da Amostra")
-                st.markdown("<hr style='margin: 10px 0;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin: 20px 0; border-top: 1px solid #EDF2F7;'>", unsafe_allow_html=True)
                 
-                # Renderiza os campos numa grade elegante
                 inputs = {}
                 col_i1, col_i2 = st.columns(2)
                 for i, (_, row_pa) in enumerate(df_parametros.iterrows()):
                     alvo = col_i1 if i % 2 == 0 else col_i2
                     inputs[row_pa['id']] = alvo.number_input(f"{row_pa['nome']} ({row_pa['unidade']})", value=None, format="%.2f")
                 
+                st.markdown("<br>", unsafe_allow_html=True)
                 if st.form_submit_button("Salvar Resultados"):
                     id_ponto_sel = db.obter_id_ponto(ponto_selecionado)
                     for param_id, valor_digitado in inputs.items():
@@ -212,6 +242,7 @@ if st.session_state.autenticado:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         with st.form("add_ponto_novo"):
             st.markdown("<h3>Adicionar Novo Ponto</h3>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
             c1, c2, c3, c4 = st.columns([1, 2, 1, 1])
             cod_p = c1.text_input("Código")
             loc_p = c2.text_input("Local")
@@ -223,15 +254,17 @@ if st.session_state.autenticado:
         st.markdown('</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("<h3>Pontos Cadastrados</h3><br>", unsafe_allow_html=True)
+        st.markdown("<h3>Pontos Cadastrados</h3>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
         # Cabeçalho da Lista
         ch1, ch2, ch3 = st.columns([1, 4, 2])
-        ch1.markdown("<span style='font-size:11px; color:#6B7280; font-weight:600;'>CÓDIGO</span>", unsafe_allow_html=True)
-        ch2.markdown("<span style='font-size:11px; color:#6B7280; font-weight:600;'>LOCAL</span>", unsafe_allow_html=True)
-        ch3.markdown("<span style='font-size:11px; color:#6B7280; font-weight:600;'>AÇÕES</span>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
+        ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>CÓDIGO</span>", unsafe_allow_html=True)
+        ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>LOCAL</span>", unsafe_allow_html=True)
+        ch3.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>AÇÕES</span>", unsafe_allow_html=True)
+        st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
         
-        for _, row in df_pontos.iterrows():
+        for index, row in df_pontos.iterrows():
             if st.session_state.edit_ponto == row['id']:
                 with st.form(f"edit_pt_{row['id']}"):
                     ce1, ce2, ce3, ce4 = st.columns([1, 2, 1, 1])
@@ -245,15 +278,17 @@ if st.session_state.autenticado:
                         st.rerun()
             else:
                 c1, c2, c3, c4 = st.columns([1, 4, 1, 1])
-                c1.markdown(f"<span style='font-size:14px; font-weight:500;'>{row['codigo']}</span>", unsafe_allow_html=True)
-                c2.markdown(f"<span style='font-size:14px; color:#374151;'>{row['local']}</span>", unsafe_allow_html=True)
-                if c3.button("Editar", key=f"ep_{row['id']}"): 
+                c1.markdown(f"<span style='font-size:14px; font-weight:500; color:#2D3748;'>{row['codigo']}</span>", unsafe_allow_html=True)
+                c2.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['local']}</span>", unsafe_allow_html=True)
+                
+                # Ícones discretos, utilizando o recurso nativo de ícones Material Design do Streamlit
+                if c3.button("Editar", icon=":material/edit:", key=f"ep_{row['id']}", help="Editar Ponto"): 
                     st.session_state.edit_ponto = row['id']
                     st.rerun()
-                if c4.button("Excluir", key=f"dp_{row['id']}"):
+                if c4.button("Excluir", icon=":material/delete:", key=f"dp_{row['id']}", help="Excluir Ponto"):
                     db.deletar_ponto(row['id'])
                     st.rerun()
-                st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #F3F4F6;'>", unsafe_allow_html=True)
+                st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     # --- ABA: PARÂMETROS ---
@@ -261,6 +296,7 @@ if st.session_state.autenticado:
         st.markdown('<div class="card">', unsafe_allow_html=True)
         with st.form("add_param_novo"):
             st.markdown("<h3>Adicionar Novo Parâmetro</h3>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
             c1, c2, c3 = st.columns([3, 1, 2])
             p_nome = c1.text_input("Nome do Parâmetro")
             p_und = c2.text_input("Unidade")
@@ -272,16 +308,18 @@ if st.session_state.autenticado:
         st.markdown('</div>', unsafe_allow_html=True)
 
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.markdown("<h3>Parâmetros Cadastrados</h3><br>", unsafe_allow_html=True)
+        st.markdown("<h3>Parâmetros Cadastrados</h3>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
         # Cabeçalho da Lista
         ch1, ch2, ch3, ch4 = st.columns([3, 1, 2, 2])
-        ch1.markdown("<span style='font-size:11px; color:#6B7280; font-weight:600;'>NOME</span>", unsafe_allow_html=True)
-        ch2.markdown("<span style='font-size:11px; color:#6B7280; font-weight:600;'>UNID.</span>", unsafe_allow_html=True)
-        ch3.markdown("<span style='font-size:11px; color:#6B7280; font-weight:600;'>LIMITE</span>", unsafe_allow_html=True)
-        ch4.markdown("<span style='font-size:11px; color:#6B7280; font-weight:600;'>AÇÕES</span>", unsafe_allow_html=True)
-        st.markdown("<hr style='margin: 5px 0 10px 0;'>", unsafe_allow_html=True)
+        ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>NOME</span>", unsafe_allow_html=True)
+        ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>UNID.</span>", unsafe_allow_html=True)
+        ch3.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>LIMITE</span>", unsafe_allow_html=True)
+        ch4.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>AÇÕES</span>", unsafe_allow_html=True)
+        st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
         
-        for _, row in df_parametros.iterrows():
+        for index, row in df_parametros.iterrows():
             if st.session_state.edit_param == row['id']:
                 with st.form(f"edit_pa_{row['id']}"):
                     ce1, ce2, ce3 = st.columns([3, 1, 2])
@@ -295,14 +333,16 @@ if st.session_state.autenticado:
                         st.rerun()
             else:
                 c1, c2, c3, c4, c5 = st.columns([3, 1, 2, 1, 1])
-                c1.markdown(f"<span style='font-size:14px; font-weight:500;'>{row['nome']}</span>", unsafe_allow_html=True)
-                c2.markdown(f"<span style='font-size:14px; color:#6B7280;'>{row['unidade']}</span>", unsafe_allow_html=True)
-                c3.markdown(f"<span style='font-size:14px; color:#374151;'>{row['limite_legal'] if pd.notnull(row['limite_legal']) else '-'}</span>", unsafe_allow_html=True)
-                if c4.button("Editar", key=f"epa_{row['id']}"): 
+                c1.markdown(f"<span style='font-size:14px; font-weight:500; color:#2D3748;'>{row['nome']}</span>", unsafe_allow_html=True)
+                c2.markdown(f"<span style='font-size:14px; color:#718096;'>{row['unidade']}</span>", unsafe_allow_html=True)
+                c3.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['limite_legal'] if pd.notnull(row['limite_legal']) else '-'}</span>", unsafe_allow_html=True)
+                
+                # Ícones discretos sem cores pesadas
+                if c4.button("Editar", icon=":material/edit:", key=f"epa_{row['id']}", help="Editar Parâmetro"): 
                     st.session_state.edit_param = row['id']
                     st.rerun()
-                if c5.button("Excluir", key=f"dpa_{row['id']}"):
+                if c5.button("Excluir", icon=":material/delete:", key=f"dpa_{row['id']}", help="Excluir Parâmetro"):
                     db.deletar_parametro(row['id'])
                     st.rerun()
-                st.markdown("<hr style='margin: 5px 0; border-top: 1px solid #F3F4F6;'>", unsafe_allow_html=True)
+                st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
