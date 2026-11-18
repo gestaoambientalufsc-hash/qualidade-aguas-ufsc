@@ -14,6 +14,21 @@ def inicializar_banco():
     cursor.execute('''CREATE TABLE IF NOT EXISTS parametros (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, unidade TEXT, limite_legal REAL)''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS coletas (id INTEGER PRIMARY KEY AUTOINCREMENT, ponto_id INTEGER, parametro_id INTEGER, data_amostra DATE, valor REAL, FOREIGN KEY(ponto_id) REFERENCES pontos(id), FOREIGN KEY(parametro_id) REFERENCES parametros(id))''')
     
+    # Nova tabela para as faixas dinâmicas do IQA
+    cursor.execute('''CREATE TABLE IF NOT EXISTS faixas_iqa (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT, valor_min REAL, valor_max REAL, cor_texto TEXT, cor_bg TEXT, cor_grafico TEXT)''')
+    
+    # Preencher faixas padrão caso seja a primeira vez
+    cursor.execute("SELECT COUNT(*) FROM faixas_iqa")
+    if cursor.fetchone()[0] == 0:
+        faixas = [
+            ('Péssima', 0, 20, '#E53E3E', '#FFF5F5', 'rgba(229, 62, 62, 0.08)'),
+            ('Ruim', 20, 36, '#DD6B20', '#FFF5F5', 'rgba(221, 107, 32, 0.08)'),
+            ('Regular', 36, 51, '#D69E2E', '#FFFFF0', 'rgba(214, 158, 46, 0.08)'),
+            ('Boa', 51, 80, '#38A169', '#E6FFFA', 'rgba(56, 161, 105, 0.08)'),
+            ('Ótima', 80, 100, '#2F855A', '#F0FFF4', 'rgba(47, 133, 90, 0.12)')
+        ]
+        cursor.executemany("INSERT INTO faixas_iqa (nome, valor_min, valor_max, cor_texto, cor_bg, cor_grafico) VALUES (?, ?, ?, ?, ?, ?)", faixas)
+    
     cursor.execute("SELECT COUNT(*) FROM parametros")
     if cursor.fetchone()[0] == 0:
         parametros_iniciais = [
@@ -36,6 +51,21 @@ def inicializar_banco():
     conn.commit()
     conn.close()
 
+# Funções das Faixas do IQA
+def buscar_faixas_iqa():
+    conn = get_conexao()
+    df = pd.read_sql_query("SELECT * FROM faixas_iqa ORDER BY id", conn)
+    conn.close()
+    return df
+
+def atualizar_faixa_iqa(id_faixa, val_min, val_max):
+    conn = get_conexao()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE faixas_iqa SET valor_min=?, valor_max=? WHERE id=?", (val_min, val_max, id_faixa))
+    conn.commit()
+    conn.close()
+
+# Funções base existentes
 def buscar_pontos():
     conn = get_conexao()
     df = pd.read_sql_query("SELECT * FROM pontos", conn)
@@ -104,13 +134,6 @@ def atualizar_parametro(id_param, nome, unidade, limite):
     conn.commit()
     conn.close()
 
-def atualizar_coleta(id_coleta, ponto_id, param_id, data, valor):
-    conn = get_conexao()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE coletas SET ponto_id=?, parametro_id=?, data_amostra=?, valor=? WHERE id=?", (ponto_id, param_id, data, valor, id_coleta))
-    conn.commit()
-    conn.close()
-
 def deletar_ponto(id_ponto):
     conn = get_conexao()
     cursor = conn.cursor()
@@ -122,12 +145,5 @@ def deletar_parametro(id_param):
     conn = get_conexao()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM parametros WHERE id = ?", (id_param,))
-    conn.commit()
-    conn.close()
-
-def deletar_coleta(id_coleta):
-    conn = get_conexao()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM coletas WHERE id = ?", (id_coleta,))
     conn.commit()
     conn.close()
