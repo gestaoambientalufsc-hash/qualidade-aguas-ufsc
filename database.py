@@ -126,6 +126,15 @@ def inicializar_banco():
             ]
             con.executemany("INSERT INTO parametros (nome,unidade,limite_legal) VALUES (?,?,?)", valores)
 
+        # O IQA deve estar disponível no cadastro, mesmo em bancos criados
+        # quando já existiam outros parâmetros ou quando foi arquivado.
+        iqa = con.execute("SELECT id, ativo FROM parametros WHERE nome LIKE 'IQA (%' ORDER BY id LIMIT 1").fetchone()
+        if iqa is None:
+            con.execute("INSERT INTO parametros (nome, unidade, limite_legal, ativo) VALUES (?, ?, NULL, 1)",
+                        ("IQA (Índice de Qualidade da Água)", "-"))
+        elif not bool(iqa["ativo"]):
+            con.execute("UPDATE parametros SET ativo=1 WHERE id=?", (int(iqa["id"]),))
+
         # Migração conservadora executada uma só vez. Se o usuário depois
         # selecionar "sem referência", não devemos restaurar o limite legado.
         ja_migrado = con.execute("SELECT 1 FROM configuracoes WHERE chave='limites_legados_migrados'").fetchone()
