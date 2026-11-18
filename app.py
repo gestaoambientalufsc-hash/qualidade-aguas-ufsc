@@ -259,20 +259,49 @@ def cartografia(pontos, foco_id=None, selecionar=True, chave="mapa_publico", alt
     return None
 
 
+def _preparar_serie_grafico(dados):
+    """Ordena observações reais; eixo de categorias mostra somente datas medidas."""
+    serie = dados.dropna(subset=["valor", "data_amostra"]).copy()
+    if serie.empty:
+        return serie, []
+    serie["dia"] = pd.to_datetime(serie["data_amostra"], errors="coerce")
+    serie = serie.dropna(subset=["dia"]).sort_values(["dia", "id"]).copy()
+    serie["data_rotulo"] = serie["dia"].dt.strftime("%d/%m/%Y")
+    datas = list(dict.fromkeys(serie["data_rotulo"].tolist()))
+    return serie, datas
+
+
+def _layout_eixo_coletas(fig, datas, altura=315, eixo_y=""):
+    # Categoria preserva o ordenamento cronológico sem inserir dias intermediários.
+    fig.update_layout(
+        height=altura, paper_bgcolor="white", plot_bgcolor="white",
+        margin=dict(l=8, r=8, t=20, b=12),
+        xaxis=dict(type="category", categoryorder="array", categoryarray=datas,
+                   tickmode="array", tickvals=datas, ticktext=datas,
+                   showgrid=False, title="", automargin=True,
+                   tickangle=-30 if len(datas) > 7 else 0),
+        yaxis=dict(gridcolor="#EEF3F5", zeroline=False, title=eixo_y),
+        hovermode="closest", showlegend=False,
+        font=dict(family="Montserrat", color=NAVY, size=11),
+    )
+
+
 def grafico_temporal(dados, parametro, config_param):
     if dados.empty:
         st.info("Ainda não existem resultados para este parâmetro no ponto selecionado.")
         return
-    dados = dados.dropna(subset=["valor", "data_amostra"]).sort_values(["data_amostra", "id"]).copy()
+    dados, datas = _preparar_serie_grafico(dados)
     if dados.empty:
         st.info("Sem medições registradas para essa seleção.")
         return
-    dados["dia"] = pd.to_datetime(dados["data_amostra"])
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=dados["dia"], y=dados["valor"], mode="markers", name="Medição registrada",
+        x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers",
+        name="Medições", connectgaps=False,
+        line=dict(color=TEAL, width=2.5),
         marker=dict(size=11, color=TEAL, line=dict(color="white", width=1.5)),
-        hovertemplate="%{x|%d/%m/%Y}<br><b>%{y:.5f}</b><extra></extra>",
+        customdata=dados["dia"].dt.strftime("%d/%m/%Y"),
+        hovertemplate="%{customdata}<br><b>%{y:.5f}</b><extra></extra>",
     ))
     if bool(config_param.get("referencia_validada", 0)):
         tipo = config_param["tipo_limite"]
@@ -283,15 +312,8 @@ def grafico_temporal(dados, parametro, config_param):
                 if pd.notna(valor):
                     fig.add_hline(y=float(valor), line_dash="dash", line_color="#D97736",
                                   annotation_text=rotulo, annotation_position="top left")
-    fig.update_layout(
-        height=315, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=8, r=8, t=20, b=10),
-        xaxis=dict(showgrid=False, title="", tickformat="%d/%m/%y", type="date"),
-        yaxis=dict(gridcolor="#EEF3F5", zeroline=False,
-                   title="" if config_param["unidade"] == "-" else config_param["unidade"]),
-        hovermode="closest", showlegend=False,
-        font=dict(family="Montserrat", color=NAVY, size=11),
-    )
+    unidade = "" if config_param["unidade"] == "-" else config_param["unidade"]
+    _layout_eixo_coletas(fig, datas, eixo_y=unidade)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -299,24 +321,43 @@ def grafico_iqa(dados, faixas):
     if dados.empty:
         st.info("Ainda não há medições de IQA informadas para este ponto.")
         return
-    dados = dados.sort_values(["data_amostra", "id"]).copy()
-    dados["dia"] = pd.to_datetime(dados["data_amostra"])
+    dados, datas = _preparar_serie_grafico(dados)
+    if dados.empty:
+        st.info("Ainda não há medições de IQA válidas para este ponto.")
+        return
+
+    cores, categorias = [], []
+    for valor in dados["valor"]:
+        faixa = classificar_iqa(valor, faixas)
+        cores.append(str(faixa["cor_texto"]) if faixa is not None else "#64748B")
+        categorias.append(str(faixa["nome"]) if faixa is not None else "Indefinida")
+
     fig = go.Figure()
     for _, fx in faixas.iterrows():
         fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
-                      fillcolor=fx["cor_grafico"], opacity=1, layer="below", line_width=0)
-    fig.add_trace(go.Scatter(x=dados["dia"], y=dados["valor"], name="IQA informado",
-                             mode="markers", marker=dict(size=11, color="#10664D"),
-                             hovertemplate="%{x|%d/%m/%Y}<br>IQA: %{y:.1f}<extra></extra>"))
-    fig.update_layout(height=315, plot_bgcolor="white", paper_bgcolor="white",
-                      margin=dict(l=8, r=8, t=20, b=10),
-                      xaxis=dict(showgrid=False, title="", tickformat="%d/%m/%y"),
-                      yaxis=dict(range=[0, 100], gridcolor="#EEF3F5", title="IQA (0–100)"),
-                      showlegend=False, font=dict(family="Montserrat", color=NAVY, size=11))
+                      fillcolor=fx["cor_grafico"], opacity=1,
+                      layer="below", line_width=0)
+    fig.add_trace(go.Scatter(
+        x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers",
+        name="IQA", connectgaps=False,
+        line=dict(color="#44657A", width=2.5),
+        marker=dict(size=13, color=cores, line=dict(color="white", width=2)),
+        customdata=list(zip(dados["data_rotulo"], categorias)),
+        hovertemplate="%{customdata[0]}<br>IQA: <b>%{y:.1f}</b><br>%{customdata[1]}<extra></extra>",
+    ))
+    _layout_eixo_coletas(fig, datas, eixo_y="IQA (0–100)")
+    fig.update_yaxes(range=[0, 100])
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    legenda = " · ".join(f"{fx.nome}: {formatar_valor(fx.valor_min)}–{formatar_valor(fx.valor_max)}"
-                        for fx in faixas.itertuples())
-    st.caption(legenda)
+    # Legenda das cores dos marcadores, derivada das faixas configuradas.
+    itens = "".join(
+        f'<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
+        f'<span style="width:9px;height:9px;background:{txt(fx.cor_texto)};'
+        f'border-radius:50%;display:inline-block"></span>{txt(fx.nome)}</span>'
+        for fx in faixas.sort_values("valor_min").itertuples()
+    )
+    st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:12px;'
+                f'font-size:12px;color:#64748B;margin:2px 0 8px">{itens}</div>',
+                unsafe_allow_html=True)
 
 
 # -----------------------------------------------------------------------------
