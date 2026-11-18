@@ -96,7 +96,6 @@ with st.sidebar:
             else:
                 st.error("Senha incorreta")
     else:
-        # Substituição das abas pela navegação na barra lateral
         menu_admin = st.radio("Menu Administrativo", ["Registrar Coleta", "Gerenciar Pontos", "Gerenciar Parâmetros"])
         st.markdown("<hr style='border-top: 1px solid #EDF2F7;'>", unsafe_allow_html=True)
         st.success("Administrador logado")
@@ -133,9 +132,13 @@ if not st.session_state.autenticado:
     param_sel = col_sel2.selectbox("Parâmetro", opcoes_param, label_visibility="collapsed")
 
     if not df_coletas.empty and ponto_sel != "Selecione o ponto..." and param_sel != "Selecione o parâmetro...":
-        df_graf = df_coletas[(df_coletas['local'] == ponto_sel) & (df_coletas['parametro'] == param_sel)].sort_values(by="data_amostra")
-        df_iqa = df_coletas[(df_coletas['local'] == ponto_sel) & (df_coletas['parametro'] == 'IQA (Índice de Qualidade da Água)')].sort_values(by="data_amostra")
+        df_graf = df_coletas[(df_coletas['local'] == ponto_sel) & (df_coletas['parametro'] == param_sel)].sort_values(by="data_amostra").copy()
+        df_iqa = df_coletas[(df_coletas['local'] == ponto_sel) & (df_coletas['parametro'] == 'IQA (Índice de Qualidade da Água)')].sort_values(by="data_amostra").copy()
         
+        # Formatando as datas para strings exatas, evitando que o Plotly crie espaços de tempo vazios
+        if not df_graf.empty: df_graf['data_str'] = pd.to_datetime(df_graf['data_amostra']).dt.strftime('%d/%m/%Y')
+        if not df_iqa.empty: df_iqa['data_str'] = pd.to_datetime(df_iqa['data_amostra']).dt.strftime('%d/%m/%Y')
+
         g1, g2 = st.columns(2)
         with g1:
             if not df_graf.empty:
@@ -144,46 +147,72 @@ if not st.session_state.autenticado:
                 st.markdown(f"<span style='font-size:11px; font-weight:600; color:#718096;'>{param_sel.upper()}</span><br><span style='font-size:28px; font-weight:600; color:#2D3748;'>{val_atual}</span> <span style='font-size:13px; color:#718096;'>{df_graf['unidade'].iloc[0]}</span>", unsafe_allow_html=True)
                 
                 fig1 = go.Figure()
-                fig1.add_trace(go.Scatter(x=df_graf["data_amostra"], y=df_graf["valor"], mode='lines+markers', line=dict(color='#4299E1', width=2), fill='tozeroy', fillcolor='rgba(66,153,225,0.1)'))
-                if pd.notnull(limite): fig1.add_hline(y=limite, line_dash="dash", line_color="#A0AEC0")
-                fig1.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, yaxis=dict(showgrid=True, gridcolor='#EDF2F7'), xaxis=dict(showgrid=False))
+                fig1.add_trace(go.Scatter(
+                    x=df_graf["data_str"], 
+                    y=df_graf["valor"], 
+                    mode='lines+markers', 
+                    marker=dict(size=10, color='#2B6CB0', line=dict(width=2, color='white')), # Pontinhos bem marcados
+                    line=dict(color='#4299E1', width=2), 
+                    fill='tozeroy', fillcolor='rgba(66,153,225,0.1)'
+                ))
+                if pd.notnull(limite): fig1.add_hline(y=limite, line_dash="dash", line_color="#A0AEC0", annotation_text="Limite")
+                fig1.update_layout(
+                    plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, 
+                    yaxis=dict(showgrid=True, gridcolor='#EDF2F7'), 
+                    xaxis=dict(showgrid=False, type='category') # type='category' garante que só as datas de coleta apareçam
+                )
                 st.plotly_chart(fig1, use_container_width=True)
-            else: st.info("Sem dados")
+            else: st.info("Sem dados para este parâmetro.")
+        
         with g2:
             if not df_iqa.empty:
                 st.markdown(f"<span style='font-size:11px; font-weight:600; color:#718096;'>ÍNDICE DE QUALIDADE (IQA)</span><br><span style='font-size:28px; font-weight:600; color:#2D3748;'>{df_iqa['valor'].iloc[-1]}</span> <span style='font-size:13px; color:#718096;'>/ 100</span>", unsafe_allow_html=True)
                 fig2 = go.Figure()
-                fig2.add_trace(go.Scatter(x=df_iqa["data_amostra"], y=df_iqa["valor"], mode='lines+markers', line=dict(color='#48BB78', width=2), fill='tozeroy', fillcolor='rgba(72,187,120,0.1)'))
-                fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, yaxis=dict(showgrid=True, gridcolor='#EDF2F7', range=[0,100]), xaxis=dict(showgrid=False))
+                fig2.add_trace(go.Scatter(
+                    x=df_iqa["data_str"], 
+                    y=df_iqa["valor"], 
+                    mode='lines+markers', 
+                    marker=dict(size=10, color='#2F855A', line=dict(width=2, color='white')),
+                    line=dict(color='#48BB78', width=2), 
+                    fill='tozeroy', fillcolor='rgba(72,187,120,0.1)'
+                ))
+                fig2.update_layout(
+                    plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, 
+                    yaxis=dict(showgrid=True, gridcolor='#EDF2F7', range=[0,100]), 
+                    xaxis=dict(showgrid=False, type='category')
+                )
                 st.plotly_chart(fig2, use_container_width=True)
+            else: st.info("Sem dados de IQA para este ponto.")
     else:
-        # Preenche o espaço em branco quando não há seleções
         st.markdown("<div style='text-align: center; padding: 40px 20px; color: #A0AEC0; font-size: 14px;'>Selecione um ponto e um parâmetro nos menus acima para visualizar o histórico.</div>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Mapa (Plotly Express - Corrige o erro de atributo)
+    # Mapa (Tratamento estrito contra AttributeError)
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("<h3>Mapa dos pontos de coleta</h3><p>Passe o mouse sobre os pontos para visualizar o código e o local.</p>", unsafe_allow_html=True)
     
     if not df_pontos.empty:
-        fig_map = px.scatter_mapbox(
-            df_pontos,
-            lat="latitude",
-            lon="longitude",
-            hover_name="codigo",
-            hover_data={"latitude": False, "longitude": False, "local": True},
-            zoom=13.5
-        )
-        fig_map.update_traces(marker=dict(size=12, color='#4299E1', opacity=0.9))
+        fig_map = go.Figure(go.Scattermapbox(
+            lat=df_pontos['latitude'].astype(float),
+            lon=df_pontos['longitude'].astype(float),
+            mode='markers',
+            marker=dict(size=14, color='#4299E1', opacity=0.9),
+            text=df_pontos['codigo'] + " - " + df_pontos['local'],
+            hoverinfo='text'
+        ))
+        
         fig_map.update_layout(
-            mapbox_style="white-bg",
-            mapbox_layers=[{
-                "below": 'traces',
-                "sourcetype": "raster",
-                "sourceattribution": "Stadia Maps",
-                "source": ["https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237"]
-            }],
-            margin={"r": 0, "t": 0, "l": 0, "b": 0},
+            mapbox=dict(
+                style="white-bg",
+                layers=[dict(
+                    below="traces",
+                    sourcetype="raster",
+                    source=["https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237"]
+                )],
+                center=dict(lat=-27.601, lon=-48.518),
+                zoom=13.5
+            ),
+            margin=dict(r=0, t=0, l=0, b=0),
             height=400,
             paper_bgcolor="#FFFFFF",
             plot_bgcolor="#FFFFFF"
@@ -195,7 +224,7 @@ if not st.session_state.autenticado:
 
 
 # ==========================================
-# PAINEL ADMINISTRATIVO (Sem Abas)
+# PAINEL ADMINISTRATIVO
 # ==========================================
 if st.session_state.autenticado:
     st.markdown("<h1>Painel Administrativo</h1>", unsafe_allow_html=True)
