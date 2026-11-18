@@ -255,12 +255,15 @@ def grafico_temporal(dados, parametro, config_param):
     if dados.empty:
         st.info("Ainda não existem resultados para este parâmetro no ponto selecionado.")
         return
-    dados = dados.sort_values(["data_amostra", "id"]).copy()
+    dados = dados.dropna(subset=["valor", "data_amostra"]).sort_values(["data_amostra", "id"]).copy()
+    if dados.empty:
+        st.info("Sem medições registradas para essa seleção.")
+        return
     dados["dia"] = pd.to_datetime(dados["data_amostra"])
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=dados["dia"], y=dados["valor"], mode="lines+markers", name="Valor medido",
-        line=dict(color=TEAL, width=2.7), marker=dict(size=8, color=TEAL, line=dict(color="white", width=1.5)),
+        x=dados["dia"], y=dados["valor"], mode="markers", name="Medição registrada",
+        marker=dict(size=11, color=TEAL, line=dict(color="white", width=1.5)),
         hovertemplate="%{x|%d/%m/%Y}<br><b>%{y:.5f}</b><extra></extra>",
     ))
     if bool(config_param.get("referencia_validada", 0)):
@@ -275,10 +278,10 @@ def grafico_temporal(dados, parametro, config_param):
     fig.update_layout(
         height=315, paper_bgcolor="white", plot_bgcolor="white",
         margin=dict(l=8, r=8, t=20, b=10),
-        xaxis=dict(showgrid=False, title="", tickformat="%d/%m/%y"),
+        xaxis=dict(showgrid=False, title="", tickformat="%d/%m/%y", type="date"),
         yaxis=dict(gridcolor="#EEF3F5", zeroline=False,
                    title="" if config_param["unidade"] == "-" else config_param["unidade"]),
-        hovermode="x unified", showlegend=False,
+        hovermode="closest", showlegend=False,
         font=dict(family="Montserrat", color=NAVY, size=11),
     )
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -295,8 +298,7 @@ def grafico_iqa(dados, faixas):
         fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
                       fillcolor=fx["cor_grafico"], opacity=1, layer="below", line_width=0)
     fig.add_trace(go.Scatter(x=dados["dia"], y=dados["valor"], name="IQA informado",
-                             mode="lines+markers", line=dict(color="#10664D", width=2.7),
-                             marker=dict(size=8, color="#10664D"),
+                             mode="markers", marker=dict(size=11, color="#10664D"),
                              hovertemplate="%{x|%d/%m/%Y}<br>IQA: %{y:.1f}<extra></extra>"))
     fig.update_layout(height=315, plot_bgcolor="white", paper_bgcolor="white",
                       margin=dict(l=8, r=8, t=20, b=10),
@@ -412,14 +414,22 @@ def painel_publico():
         st.info("Nenhum ponto ativo cadastrado.")
         return
 
-    ids = pontos["id"].astype(int).tolist()
+    # Exibir no mapa apenas pontos com medições registradas.
+    ids_com_medicao = set(resultados["ponto_id"].dropna().astype(int)) if not resultados.empty else set()
+    pontos_mapa = pontos[pontos["id"].isin(ids_com_medicao)].copy()
+    if pontos_mapa.empty:
+        titulo_secao("Mapa dos Pontos")
+        st.info("Ainda não há pontos com medições registradas.")
+        return
+
+    ids = pontos_mapa["id"].astype(int).tolist()
+    nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos_mapa.iterrows()}
     if st.session_state.get("ponto_publico") not in ids:
         st.session_state.ponto_publico = ids[0]
 
     titulo_secao("Mapa dos Pontos")
-    # O próprio mapa é o seletor de pontos; não duplicar a seleção em um card lateral.
     escolhido_mapa = cartografia(
-        pontos, foco_id=st.session_state.ponto_publico,
+        pontos_mapa, foco_id=st.session_state.ponto_publico,
         chave="mapa_publico", altura=430,
     )
     if escolhido_mapa is not None and escolhido_mapa != st.session_state.ponto_publico:
@@ -428,31 +438,55 @@ def painel_publico():
 
     st.write("")
     titulo_secao("Evolução dos indicadores")
-    ponto_id = st.session_state.ponto_publico
-    dados_pt = resultados[resultados["ponto_id"] == ponto_id] if not resultados.empty else pd.DataFrame()
     with st.container(border=True):
+        # Filtros em uma linha; somente datas e parâmetros com registros reais.
+        c_ponto, c_dia, c_parametro = st.columns([1.3, 1, 1.6], gap="small")
+        with c_ponto:
+            st.selectbox("Ponto de coleta", ids, format_func=lambda pid: nomes_pontos[pid], key="ponto_publico")
+        ponto_id = st.session_state.ponto_publico
+        dados_pt = resultados[resultados["ponto_id"] == ponto_id].copy()
+        dados_pt["dia_data"] = pd.to_datetime(dados_pt["data_amostra"], errors="coerce").dt.date
+
+        # Definir as opções a partir das medições disponíveis; não gerar datas artificiais.
+        datas = sorted(d for d in dados_pt["dia_data"].dropna().unique())
+        opcoes_dia = [None] + datas
+        with c_dia:
+            dia_sel = st.selectbox("Dia da coleta", opcoes_dia,
+                                   format_func=lambda d: "Todos os dias" if d is None else d.strftime("%d/%m/%Y"),
+                                   key="dia_publico")
+        dados_dia = dados_pt if dia_sel is None else dados_pt[dados_pt["dia_data"] == dia_sel]
+
         outros = parametros[~parametros["nome"].apply(somente_iqa)]
-        com_dados = [int(id_) for id_ in outros["id"] if not dados_pt.empty and (dados_pt["param_id"] == id_).any()]
-        param_ids = com_dados or outros["id"].astype(int).tolist()
+        ids_marcados = set(dados_dia["param_id"].dropna().astype(int)) if not dados_dia.empty else set()
+        disponiveis = outros[outros["id"].isin(ids_marcados)]
+        param_ids = disponiveis["id"].astype(int).tolist()
+        with c_parametro:
+            if param_ids:
+                if st.session_state.get("parametro_publico") not in param_ids:
+                    st.session_state.parametro_publico = param_ids[0]
+                st.selectbox("Parâmetro", param_ids,
+                             format_func=lambda pid: disponiveis.loc[disponiveis["id"] == pid, "nome"].iloc[0],
+                             key="parametro_publico")
+            else:
+                st.selectbox("Parâmetro", ["Sem medições"], disabled=True, key="parametro_sem_medicoes")
+
         if param_ids:
-            if st.session_state.get("parametro_publico") not in param_ids:
-                st.session_state.parametro_publico = param_ids[0]
-            st.selectbox("Parâmetro", param_ids,
-                         format_func=lambda pid: outros.loc[outros["id"] == pid, "nome"].iloc[0],
-                         key="parametro_publico")
-            param = outros.loc[outros["id"] == st.session_state.parametro_publico].iloc[0]
-            serie = dados_pt[dados_pt["param_id"] == st.session_state.parametro_publico] if not dados_pt.empty else pd.DataFrame()
+            param = disponiveis.loc[disponiveis["id"] == st.session_state.parametro_publico].iloc[0]
+            serie = dados_dia[dados_dia["param_id"] == st.session_state.parametro_publico]
             grafico_temporal(serie, param["nome"], param)
         else:
-            st.info("Nenhum parâmetro de análise está ativo.")
+            st.info("Nenhum resultado de parâmetro nesta data.")
 
+    # IQA também respeita o ponto e o dia escolhido.
     with st.container(border=True):
         titulo_secao("Histórico do IQA")
-        serie_iqa = dados_pt[dados_pt["parametro"].str.startswith("IQA (", na=False)] if not dados_pt.empty else pd.DataFrame()
+        serie_iqa = dados_dia[dados_dia["parametro"].str.startswith("IQA (", na=False)]
         grafico_iqa(serie_iqa, faixas)
 
     if not resultados.empty:
-        exportar = resultados[resultados["ponto_id"] == st.session_state.ponto_publico]
+        exportar = resultados[resultados["ponto_id"] == st.session_state.ponto_publico].copy()
+        if dia_sel is not None:
+            exportar = exportar[pd.to_datetime(exportar["data_amostra"], errors="coerce").dt.date == dia_sel]
         st.download_button("Baixar histórico (CSV)",
                            exportar.to_csv(index=False, sep=";").encode("utf-8-sig"),
                            "historico_aguas_ufsc.csv", "text/csv", type="secondary")
