@@ -8,7 +8,7 @@ db.inicializar_banco()
 st.set_page_config(page_title="Qualidade da Água - UFSC", layout="wide")
 
 # ==========================================
-# CSS CUSTOMIZADO (Montserrat, Hierarquia e Cores Pastel)
+# CSS CUSTOMIZADO
 # ==========================================
 st.markdown("""
     <style>
@@ -16,17 +16,13 @@ st.markdown("""
     
     * { font-family: 'Montserrat', sans-serif !important; }
     
-    /* Remoção dos espaços vazios */
     .block-container { padding-top: 2rem !important; padding-bottom: 2rem !important; max-width: 95% !important;}
-    
     .stApp { background-color: #FAFAFA; }
     
-    /* Hierarquia de Fontes */
     h1 { font-size: 26px !important; font-weight: 700 !important; color: #2D3748 !important; margin-bottom: 5px !important;}
     h3 { font-size: 17px !important; font-weight: 600 !important; color: #4A5568 !important; margin-bottom: 0px !important;}
     p { font-size: 14px !important; color: #718096 !important; }
     
-    /* Cards Arredondados e Limpos */
     .card { 
         background-color: #FFFFFF; 
         border-radius: 16px; 
@@ -36,14 +32,12 @@ st.markdown("""
         border: 1px solid #EDF2F7; 
     }
     
-    /* Caixas de Métricas em Tons Pastel */
     .metric-box-green { background-color: #E8F5E9; border-radius: 12px; padding: 20px; border: 1px solid #C8E6C9; }
     .metric-box-blue { background-color: #E3F2FD; border-radius: 12px; padding: 20px; border: 1px solid #BBDEFB; }
     .metric-box-cream { background-color: #FFF9C4; border-radius: 12px; padding: 20px; border: 1px solid #FFF59D; }
     .metric-title { font-size: 11px; text-transform: uppercase; color: #4A5568; font-weight: 600; margin-bottom: 8px;}
     .metric-value { font-size: 32px; font-weight: 600; color: #2D3748; margin: 0; line-height: 1;}
     
-    /* Botões Neutros (Sem cores berrantes) */
     .stButton>button { 
         background-color: #F7FAFC !important; 
         color: #4A5568 !important; 
@@ -55,7 +49,6 @@ st.markdown("""
     }
     .stButton>button:hover { background-color: #EDF2F7 !important; border-color: #CBD5E0 !important;}
     
-    /* Inputs arredondados */
     .stSelectbox div[data-baseweb="select"], .stTextInput input, .stNumberInput input, .stDateInput input { 
         border-radius: 8px !important; 
         border: 1px solid #E2E8F0;
@@ -63,8 +56,6 @@ st.markdown("""
     
     .logo-container { display: flex; gap: 12px; margin-bottom: 20px; }
     .logo-container img { height: 45px; object-fit: contain; }
-    
-    /* Linha divisória de tabelas */
     .row-divider { border-bottom: 1px solid #EDF2F7; margin-top: 8px; margin-bottom: 8px; }
     </style>
 """, unsafe_allow_html=True)
@@ -76,6 +67,16 @@ if 'autenticado' not in st.session_state: st.session_state.autenticado = False
 if 'edit_ponto' not in st.session_state: st.session_state.edit_ponto = None
 if 'edit_param' not in st.session_state: st.session_state.edit_param = None
 if 'edit_coleta' not in st.session_state: st.session_state.edit_coleta = None
+
+# Buscar Dados
+df_pontos = db.buscar_pontos()
+df_parametros = db.buscar_parametros()
+df_coletas = db.buscar_coletas()
+
+ult_coleta = df_coletas['data_amostra'].max() if not df_coletas.empty else "N/A"
+if ult_coleta != "N/A":
+    partes = ult_coleta.split("-")
+    ult_coleta = f"{partes[2]}/{partes[1]}/{partes[0]}"
 
 # ==========================================
 # BARRA LATERAL
@@ -95,20 +96,13 @@ with st.sidebar:
             else:
                 st.error("Senha incorreta")
     else:
+        # Substituição das abas pela navegação na barra lateral
+        menu_admin = st.radio("Menu Administrativo", ["Registrar Coleta", "Gerenciar Pontos", "Gerenciar Parâmetros"])
+        st.markdown("<hr style='border-top: 1px solid #EDF2F7;'>", unsafe_allow_html=True)
         st.success("Administrador logado")
         if st.button("Sair do Painel"):
             st.session_state.autenticado = False
             st.rerun()
-
-# Buscar Dados
-df_pontos = db.buscar_pontos()
-df_parametros = db.buscar_parametros()
-df_coletas = db.buscar_coletas()
-
-ult_coleta = df_coletas['data_amostra'].max() if not df_coletas.empty else "N/A"
-if ult_coleta != "N/A":
-    partes = ult_coleta.split("-")
-    ult_coleta = f"{partes[2]}/{partes[1]}/{partes[0]}"
 
 # ==========================================
 # ÁREA PÚBLICA (VISUALIZAÇÃO GERAL)
@@ -118,7 +112,7 @@ if not st.session_state.autenticado:
     st.markdown("<h1>Monitoramento Qualidade de Água Córregos UFSC</h1>", unsafe_allow_html=True)
     st.markdown("<p style='margin-bottom: 25px;'>Histórico de coletas, comparação com a legislação ambiental e evolução do Índice de Qualidade das Águas no campus Florianópolis.</p>", unsafe_allow_html=True)
     
-    # Métricas Pastel
+    # Métricas
     c_met1, c_met2, c_met3 = st.columns(3)
     with c_met1: st.markdown(f'<div class="metric-box-green"><div class="metric-title">Pontos Monitorados</div><div class="metric-value">{len(df_pontos)}</div></div>', unsafe_allow_html=True)
     with c_met2: st.markdown(f'<div class="metric-box-blue"><div class="metric-title">Análises Registradas</div><div class="metric-value">{len(df_coletas)}</div></div>', unsafe_allow_html=True)
@@ -162,22 +156,25 @@ if not st.session_state.autenticado:
                 fig2.add_trace(go.Scatter(x=df_iqa["data_amostra"], y=df_iqa["valor"], mode='lines+markers', line=dict(color='#48BB78', width=2), fill='tozeroy', fillcolor='rgba(72,187,120,0.1)'))
                 fig2.update_layout(plot_bgcolor="white", paper_bgcolor="white", margin=dict(t=20, b=10, l=0, r=0), height=250, yaxis=dict(showgrid=True, gridcolor='#EDF2F7', range=[0,100]), xaxis=dict(showgrid=False))
                 st.plotly_chart(fig2, use_container_width=True)
+    else:
+        # Preenche o espaço em branco quando não há seleções
+        st.markdown("<div style='text-align: center; padding: 40px 20px; color: #A0AEC0; font-size: 14px;'>Selecione um ponto e um parâmetro nos menus acima para visualizar o histórico.</div>", unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Mapa (Plotly - Sem Leaflet)
+    # Mapa (Plotly Express - Corrige o erro de atributo)
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown("<h3>Mapa dos pontos de coleta</h3><p>Passe o mouse sobre os pontos para visualizar o código e o local.</p>", unsafe_allow_html=True)
     
     if not df_pontos.empty:
-        fig_map = go.Figure(go.Scattermapbox(
-            lat=df_pontos['latitude'],
-            lon=df_pontos['longitude'],
-            mode='markers',
-            marker=go.scattermapbox.Marker(size=12, color='#4299E1', opacity=0.9),
-            text=df_pontos['codigo'] + " - " + df_pontos['local'],
-            hoverinfo='text'
-        ))
-        
+        fig_map = px.scatter_mapbox(
+            df_pontos,
+            lat="latitude",
+            lon="longitude",
+            hover_name="codigo",
+            hover_data={"latitude": False, "longitude": False, "local": True},
+            zoom=13.5
+        )
+        fig_map.update_traces(marker=dict(size=12, color='#4299E1', opacity=0.9))
         fig_map.update_layout(
             mapbox_style="white-bg",
             mapbox_layers=[{
@@ -186,8 +183,6 @@ if not st.session_state.autenticado:
                 "sourceattribution": "Stadia Maps",
                 "source": ["https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png?api_key=af1b2140-1a60-4eec-9983-9406fa69f237"]
             }],
-            mapbox_zoom=13.5,
-            mapbox_center={"lat": -27.601, "lon": -48.518},
             margin={"r": 0, "t": 0, "l": 0, "b": 0},
             height=400,
             paper_bgcolor="#FFFFFF",
@@ -200,14 +195,12 @@ if not st.session_state.autenticado:
 
 
 # ==========================================
-# PAINEL ADMINISTRATIVO
+# PAINEL ADMINISTRATIVO (Sem Abas)
 # ==========================================
 if st.session_state.autenticado:
     st.markdown("<h1>Painel Administrativo</h1>", unsafe_allow_html=True)
-    aba_coletas, aba_pontos, aba_params = st.tabs(["Registrar Coletas", "Pontos de Coleta", "Parâmetros"])
     
-    # --- ABA: COLETAS ---
-    with aba_coletas:
+    if menu_admin == "Registrar Coleta":
         st.markdown('<div class="card">', unsafe_allow_html=True)
         st.markdown("<h3>Registrar Nova Coleta</h3>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
@@ -237,8 +230,7 @@ if st.session_state.autenticado:
                     st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- ABA: PONTOS ---
-    with aba_pontos:
+    elif menu_admin == "Gerenciar Pontos":
         st.markdown('<div class="card">', unsafe_allow_html=True)
         with st.form("add_ponto_novo"):
             st.markdown("<h3>Adicionar Novo Ponto</h3>", unsafe_allow_html=True)
@@ -257,7 +249,6 @@ if st.session_state.autenticado:
         st.markdown("<h3>Pontos Cadastrados</h3>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Cabeçalho da Lista
         ch1, ch2, ch3 = st.columns([1, 4, 2])
         ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>CÓDIGO</span>", unsafe_allow_html=True)
         ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>LOCAL</span>", unsafe_allow_html=True)
@@ -281,7 +272,6 @@ if st.session_state.autenticado:
                 c1.markdown(f"<span style='font-size:14px; font-weight:500; color:#2D3748;'>{row['codigo']}</span>", unsafe_allow_html=True)
                 c2.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['local']}</span>", unsafe_allow_html=True)
                 
-                # Ícones discretos, utilizando o recurso nativo de ícones Material Design do Streamlit
                 if c3.button("Editar", icon=":material/edit:", key=f"ep_{row['id']}", help="Editar Ponto"): 
                     st.session_state.edit_ponto = row['id']
                     st.rerun()
@@ -291,8 +281,7 @@ if st.session_state.autenticado:
                 st.markdown("<div class='row-divider'></div>", unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- ABA: PARÂMETROS ---
-    with aba_params:
+    elif menu_admin == "Gerenciar Parâmetros":
         st.markdown('<div class="card">', unsafe_allow_html=True)
         with st.form("add_param_novo"):
             st.markdown("<h3>Adicionar Novo Parâmetro</h3>", unsafe_allow_html=True)
@@ -311,7 +300,6 @@ if st.session_state.autenticado:
         st.markdown("<h3>Parâmetros Cadastrados</h3>", unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # Cabeçalho da Lista
         ch1, ch2, ch3, ch4 = st.columns([3, 1, 2, 2])
         ch1.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>NOME</span>", unsafe_allow_html=True)
         ch2.markdown("<span style='font-size:12px; color:#A0AEC0; font-weight:600;'>UNID.</span>", unsafe_allow_html=True)
@@ -337,7 +325,6 @@ if st.session_state.autenticado:
                 c2.markdown(f"<span style='font-size:14px; color:#718096;'>{row['unidade']}</span>", unsafe_allow_html=True)
                 c3.markdown(f"<span style='font-size:14px; color:#4A5568;'>{row['limite_legal'] if pd.notnull(row['limite_legal']) else '-'}</span>", unsafe_allow_html=True)
                 
-                # Ícones discretos sem cores pesadas
                 if c4.button("Editar", icon=":material/edit:", key=f"epa_{row['id']}", help="Editar Parâmetro"): 
                     st.session_state.edit_param = row['id']
                     st.rerun()
