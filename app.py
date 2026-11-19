@@ -150,6 +150,12 @@ button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !im
 [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) {
   background:#EFF6FF; color:#1D4ED8; font-weight:700;}
 [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {background:#F8FAFF;}
+.campaign-kpis {display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap;padding-bottom:11px;}
+.campaign-kpis span {font-size:12px;color:#64748B;white-space:nowrap;}
+.campaign-kpis strong {font-size:18px;color:#17324D;margin-right:4px;}
+[data-baseweb="tag"] {background:#2563EB !important;color:white !important;border:1px solid #1D4ED8 !important;}
+[data-baseweb="tag"] span, [data-baseweb="tag"] svg {color:white !important;fill:white !important;}
+[data-baseweb="select"]:focus-within > div {border-color:#2563EB !important;}
 [data-testid="stDataFrame"] {border-radius:10px; overflow:hidden;}
 [data-testid="stPlotlyChart"] {border-radius:10px;}
 section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bottom:.05rem;}
@@ -502,64 +508,42 @@ def estilos_mapa_por_campanha(pontos, campanha_df, faixas):
 
 
 def grafico_distribuicao_iqa(campanha_df, faixas):
-    resumo_iqa = obter_iqa_por_ponto(campanha_df, faixas)
-    if resumo_iqa.empty:
-        st.info("Não há IQA registrado nesta campanha.")
+    """Resumo discreto por categoria, legível até com somente um IQA."""
+    resumo = obter_iqa_por_ponto(campanha_df, faixas)
+    total = len(resumo)
+    if not total:
+        st.caption("Nenhum IQA informado nesta campanha.")
         return
-    ordem = faixas.sort_values("valor_min")
-    registros = []
-    for _, fx in ordem.iterrows():
-        qtd = int((resumo_iqa["classificacao"] == fx["nome"]).sum())
-        if qtd > 0:
-            registros.append((fx["nome"], qtd, fx["cor_texto"]))
-    fig = go.Figure(go.Pie(
-        labels=[r[0] for r in registros],
-        values=[r[1] for r in registros],
-        hole=0.62,
-        sort=False,
-        marker=dict(colors=[r[2] for r in registros], line=dict(color="white", width=2)),
-        textinfo="label+value",
-        hovertemplate="%{label}: <b>%{value}</b> ponto(s)<extra></extra>",
-    ))
-    fig.update_layout(
-        height=300, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=10, r=10, t=12, b=12),
-        font=dict(family="Montserrat", color=NAVY, size=11),
-        showlegend=False,
-        annotations=[dict(text=f"<b>{len(resumo_iqa)}</b><br>com IQA", x=0.5, y=0.5, showarrow=False,
-                          font=dict(size=17, color=NAVY))],
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-
-def grafico_cobertura_campanhas(resultados):
-    if resultados.empty:
-        st.info("Ainda não há campanhas registradas.")
-        return
-    base = preparar_resultados_publicos(resultados)
-    resumo = (base.groupby(["dia", "data_rotulo"], as_index=False)
-                .agg(pontos=("ponto_id", "nunique"),
-                     parametros=("param_id", "nunique"),
-                     resultados=("id", "count")))
-    resumo = resumo.sort_values("dia")
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=resumo["data_rotulo"], y=resumo["pontos"], name="Pontos amostrados",
-                         marker=dict(color="#2563EB", line=dict(color="white", width=1))))
-    fig.add_trace(go.Bar(x=resumo["data_rotulo"], y=resumo["parametros"], name="Parâmetros medidos",
-                         marker=dict(color="#93C5FD", line=dict(color="white", width=1))))
-    fig.update_layout(
-        barmode="group", height=315, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=8, r=8, t=20, b=12),
-        xaxis=dict(type="category", categoryorder="array", categoryarray=resumo["data_rotulo"].tolist(),
-                   showgrid=False, title="", tickangle=-30 if len(resumo) > 7 else 0),
-        yaxis=dict(gridcolor="#EEF3F5", zeroline=False, title="Quantidade"),
-        legend=dict(orientation="h", y=1.12, x=0),
-        font=dict(family="Montserrat", color=NAVY, size=11),
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    resumo = resumo.copy()
+    col_a, col_b = st.columns([1, 2])
+    col_a.metric("Com IQA", total)
+    if total == 1:
+        registro = resumo.iloc[0]
+        with col_b:
+            st.markdown(
+                f'<div style="font-size:13px;color:#64748B;margin-top:7px">Classificação</div>'
+                f'<div style="font-size:19px;font-weight:700;color:{txt(registro["cor"])}">'
+                f'{txt(registro["classificacao"])} · {formatar_valor(registro["valor"])}'
+                f'</div>', unsafe_allow_html=True)
+    else:
+        col_b.metric("Categorias presentes", resumo["classificacao"].nunique())
+    for _, fx in faixas.sort_values("valor_min", ascending=False).iterrows():
+        qtd = int((resumo["classificacao"] == fx["nome"]).sum())
+        if qtd == 0:
+            continue
+        proporcao = 100 * qtd / total
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:9px;margin:8px 0;">'
+            f'<span style="width:10px;height:10px;flex-shrink:0;border-radius:50%;background:{txt(fx["cor_texto"])}"></span>'
+            f'<span style="font-size:12px;color:#334155;min-width:66px">{txt(fx["nome"])}</span>'
+            f'<span style="flex:1;height:7px;background:#EFF3F8;border-radius:8px;overflow:hidden">'
+            f'<span style="display:block;background:{txt(fx["cor_texto"])};height:100%;width:{proporcao:.2f}%;border-radius:8px"></span></span>'
+            f'<strong style="font-size:12px;color:#17324D">{qtd}</strong></div>',
+            unsafe_allow_html=True)
 
 
 def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
+    """Gráfico horizontal de pontos: permanece legível com 1 ou 35 locais."""
     dados = campanha_df[campanha_df["param_id"] == int(parametro_id)].copy()
     if dados.empty:
         st.info("Nenhum ponto possui esse parâmetro na campanha selecionada.")
@@ -567,31 +551,48 @@ def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
     dados = (dados.groupby(["ponto_id", "codigo", "local"], as_index=False)
                   .agg(valor=("valor", "mean"), registros=("id", "count")))
     ordem = {int(pid): i for i, pid in enumerate(pontos["id"].astype(int).tolist())}
-    dados = dados.sort_values(by="ponto_id", key=lambda s: s.map(ordem))
+    dados["ordem"] = dados["ponto_id"].map(ordem)
+    dados = dados.sort_values("ordem")
     param = parametros[parametros["id"] == int(parametro_id)].iloc[0]
     unidade = "" if str(param["unidade"]) == "-" else f" {param['unidade']}"
-    dados["rotulo"] = dados.apply(lambda r: f"{r['codigo']}", axis=1)
-    fig = go.Figure(go.Bar(
-        x=dados["rotulo"], y=dados["valor"],
-        marker=dict(color="#2563EB", line=dict(color="white", width=1.2)),
-        text=[formatar_valor(v) for v in dados["valor"]], textposition="outside",
+    rotulos = [f"P{row.codigo}" if str(row.codigo).isdigit() else str(row.codigo)
+               for row in dados.itertuples()]
+    fig = go.Figure()
+    # Guias sutis no lugar de barras maciças, inclusive com apenas uma medição.
+    for rotulo, valor in zip(rotulos, dados["valor"]):
+        fig.add_shape(type="line", x0=0, x1=float(valor), y0=rotulo, y1=rotulo,
+                      line=dict(color="#BFDBFE", width=4))
+    fig.add_trace(go.Scatter(
+        x=dados["valor"], y=rotulos, mode="markers+text",
+        marker=dict(size=15, color="#2563EB", line=dict(color="white", width=2)),
+        text=[formatar_valor(v) for v in dados["valor"]],
+        textposition="middle right", textfont=dict(color=NAVY, size=12),
         customdata=dados[["local", "registros"]].values,
-        hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>Valor: <b>%{y:.5f}</b>" + unidade + "<br>Registros: %{customdata[1]}<extra></extra>",
-    ))
-    fig.update_layout(
-        height=330, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=8, r=8, t=18, b=12),
-        xaxis=dict(title="", showgrid=False),
-        yaxis=dict(title=unidade.strip(), gridcolor="#EEF3F5", zeroline=False),
-        font=dict(family="Montserrat", color=NAVY, size=11),
+        hovertemplate="<b>%{y}</b><br>%{customdata[0]}<br>Valor: <b>%{x:.5f}</b>" +
+                      unidade + "<br>Medições: %{customdata[1]}<extra></extra>",
         showlegend=False,
+    ))
+    valores = dados["valor"].astype(float)
+    minimo = min(0.0, float(valores.min()))
+    maximo = max(0.0, float(valores.max()))
+    amplitude = max(maximo - minimo, abs(maximo), 1.0)
+    fig.update_layout(
+        height=max(260, min(850, 110 + len(dados) * 31)),
+        paper_bgcolor="white", plot_bgcolor="white",
+        margin=dict(l=10, r=70, t=24, b=25),
+        xaxis=dict(title=unidade.strip(), gridcolor="#EDF2F7", zeroline=False,
+                   range=[minimo - .08 * amplitude, maximo + .24 * amplitude]),
+        yaxis=dict(title="", type="category", categoryorder="array",
+                   categoryarray=list(reversed(rotulos)), showgrid=False),
+        hoverlabel=dict(bgcolor="white"),
+        font=dict(family="Montserrat", color=NAVY, size=11),
     )
     if bool(param.get("referencia_validada", 0)):
         tipo = param["tipo_limite"]
         if tipo in ("minimo", "intervalo") and pd.notna(param["limite_min"]):
-            fig.add_hline(y=float(param["limite_min"]), line_dash="dash", line_color="#F59E0B")
+            fig.add_vline(x=float(param["limite_min"]), line_dash="dash", line_color="#64748B")
         if tipo in ("maximo", "intervalo") and pd.notna(param["limite_max"]):
-            fig.add_hline(y=float(param["limite_max"]), line_dash="dash", line_color="#F59E0B")
+            fig.add_vline(x=float(param["limite_max"]), line_dash="dash", line_color="#64748B")
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -735,54 +736,50 @@ def painel_publico():
         st.info("Nenhum ponto ativo cadastrado.")
         return
 
-    # Seleção da campanha para mapa, distribuição e comparação entre pontos.
+    # Um único filtro de campanha governa o panorama e os gráficos comparativos.
     campanha_opcoes = campanhas if campanhas else [None]
     if st.session_state.get("campanha_publica") not in campanha_opcoes:
         st.session_state.campanha_publica = campanha_opcoes[0]
     st.write("")
-    with st.container(border=True):
-        titulo_secao("Panorama da campanha", "Selecione uma data para atualizar o mapa e os resumos da campanha.")
-        col_data, col_resumo1, col_resumo2 = st.columns([1.2, .7, .7])
-        with col_data:
-            campanha_sel = st.selectbox(
-                "Campanha de coleta",
-                campanha_opcoes,
-                key="campanha_publica",
-                format_func=lambda d: "Sem dados" if d is None else d.strftime("%d/%m/%Y")
-            )
-        campanha_df = resultados[resultados["dia"] == campanha_sel].copy() if campanha_sel is not None and not resultados.empty else resultados.iloc[0:0].copy()
-        resumo_iqa = obter_iqa_por_ponto(campanha_df, faixas)
-        with col_resumo1:
-            st.metric("Pontos amostrados", int(campanha_df["ponto_id"].nunique()) if not campanha_df.empty else 0)
-        with col_resumo2:
-            st.metric("Pontos com IQA", int(resumo_iqa["ponto_id"].nunique()) if not resumo_iqa.empty else 0)
+    topo_esq, topo_dir = st.columns([1, 2.5], vertical_alignment="bottom")
+    with topo_esq:
+        campanha_sel = st.selectbox(
+            "Campanha de coleta", campanha_opcoes, key="campanha_publica",
+            format_func=lambda d: "Sem dados" if d is None else d.strftime("%d/%m/%Y"),
+        )
+    campanha_df = (resultados[resultados["dia"] == campanha_sel].copy()
+                   if campanha_sel is not None and not resultados.empty else resultados.iloc[0:0].copy())
+    resumo_iqa = obter_iqa_por_ponto(campanha_df, faixas)
+    with topo_dir:
+        n_pontos = int(campanha_df["ponto_id"].nunique()) if not campanha_df.empty else 0
+        n_iqa = len(resumo_iqa)
+        st.markdown(
+            f'<div class="campaign-kpis"><span><strong>{n_pontos}</strong> pontos amostrados</span>'
+            f'<span><strong>{n_iqa}</strong> com IQA</span></div>',
+            unsafe_allow_html=True,
+        )
 
-        mapa_col, painel_col = st.columns([1.6, 1], gap="large")
-        pontos_mapa = pontos.copy()
-        ids = pontos_mapa["id"].astype(int).tolist()
-        if st.session_state.get("ponto_publico") not in ids:
-            st.session_state.ponto_publico = ids[0]
-        estilos, popups, resumo_iqa = estilos_mapa_por_campanha(pontos_mapa, campanha_df, faixas)
-        with mapa_col:
-            titulo_secao("Mapa dos Pontos", "As cores seguem a classificação do IQA na campanha selecionada.")
-            escolhido_mapa = cartografia(
-                pontos_mapa, foco_id=st.session_state.ponto_publico,
-                chave="mapa_publico", altura=430,
-                estilos_por_ponto=estilos, popup_por_ponto=popups,
-            )
-            if escolhido_mapa is not None and escolhido_mapa != st.session_state.ponto_publico:
-                st.session_state.ponto_publico = escolhido_mapa
-                st.rerun()
-        with painel_col:
-            titulo_secao("Classificação do IQA", "Distribuição dos pontos com IQA na campanha escolhida.")
+    titulo_secao("Mapa dos Pontos")
+    mapa_col, painel_col = st.columns([1.8, 1], gap="medium")
+    pontos_mapa = pontos.copy()
+    ids = pontos_mapa["id"].astype(int).tolist()
+    if st.session_state.get("ponto_publico") not in ids:
+        st.session_state.ponto_publico = ids[0]
+    estilos, popups, resumo_iqa = estilos_mapa_por_campanha(pontos_mapa, campanha_df, faixas)
+    with mapa_col:
+        escolhido_mapa = cartografia(
+            pontos_mapa, foco_id=st.session_state.ponto_publico,
+            chave="mapa_publico", altura=405,
+            estilos_por_ponto=estilos, popup_por_ponto=popups,
+        )
+        if escolhido_mapa is not None and escolhido_mapa != st.session_state.ponto_publico:
+            st.session_state.ponto_publico = escolhido_mapa
+            st.rerun()
+    with painel_col:
+        with st.container(border=True):
+            titulo_secao("Classificação do IQA")
             grafico_distribuicao_iqa(campanha_df, faixas)
-            sem_iqa = max(int(campanha_df["ponto_id"].nunique()) - int(resumo_iqa["ponto_id"].nunique() if not resumo_iqa.empty else 0), 0)
-            st.caption(f"Sem IQA informado na campanha: {sem_iqa} ponto(s).")
-
-    st.write("")
-    with st.container(border=True):
-        titulo_secao("Cobertura das campanhas", "Quantos pontos e parâmetros foram registrados em cada data.")
-        grafico_cobertura_campanhas(resultados)
+            st.caption("Cores dos pontos no mapa: classificação do IQA; cinza significa sem IQA na data.")
 
     st.write("")
     with st.container(border=True):
@@ -842,17 +839,15 @@ def painel_publico():
             else:
                 st.selectbox("Parâmetro", ["Sem medições"], disabled=True, key="parametro_sem_medicoes")
 
-        g1, g2 = st.columns(2, gap="large")
-        with g1:
-            titulo_secao("Evolução do parâmetro")
+        aba_parametro, aba_iqa = st.tabs(["Evolução do parâmetro", "Histórico do IQA"])
+        with aba_parametro:
             if param_ids:
                 param = disponiveis.loc[disponiveis["id"] == st.session_state.parametro_publico].iloc[0]
                 serie = dados_pt[dados_pt["param_id"] == st.session_state.parametro_publico]
                 grafico_temporal(serie, param["nome"], param)
             else:
                 st.info("Nenhum resultado de parâmetro para este ponto.")
-        with g2:
-            titulo_secao("Histórico do IQA do ponto")
+        with aba_iqa:
             serie_iqa = dados_pt[dados_pt["parametro"].astype(str).str.startswith("IQA (", na=False)]
             grafico_iqa(serie_iqa, faixas)
 
