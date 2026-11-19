@@ -139,6 +139,21 @@ p,li {line-height:1.55;}
 button[kind="primary"] {background:#2563EB !important; border-color:#2563EB !important; color:white !important;}
 button[kind="primary"]:hover {background:#1D4ED8 !important;}
 button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !important;}
+/* Botão de inclusão de ponto: ação leve, compacta e alinhada à direita. */
+[class*="st-key-novo_ponto_admin"] button {
+  background:#DBEAFE !important;
+  border:1px solid #BFDBFE !important;
+  color:#1D4ED8 !important;
+  font-size:.79rem !important;
+  font-weight:600 !important;
+  min-height:34px !important;
+  padding:5px 10px !important;
+}
+[class*="st-key-novo_ponto_admin"] button:hover {
+  background:#BFDBFE !important;
+  border-color:#93C5FD !important;
+  color:#1E40AF !important;
+}
 [data-baseweb="input"] > div, [data-baseweb="select"] > div,
 [data-testid="stDateInput"] input, [data-testid="stTextArea"] textarea {
   border-radius:8px !important; border-color:#DCE5EA !important;}
@@ -818,7 +833,7 @@ def painel_publico():
 
     st.write("")
     with st.container(border=True):
-        titulo_secao("Evolução dos parâmetros por ponto", "Escolha um ponto e acompanhe a evolução de um parâmetro e do IQA.")
+        titulo_secao("Evolução dos parâmetros por ponto")
         col_ponto, col_param = st.columns([1.2, 1.4])
         nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
         with col_ponto:
@@ -838,18 +853,36 @@ def painel_publico():
                              key="parametro_publico")
             else:
                 st.selectbox("Parâmetro", ["Sem medições"], disabled=True, key="parametro_sem_medicoes")
+        if param_ids:
+            param = disponiveis.loc[disponiveis["id"] == st.session_state.parametro_publico].iloc[0]
+            serie = dados_pt[dados_pt["param_id"] == st.session_state.parametro_publico]
+            grafico_temporal(serie, param["nome"], param)
+        else:
+            st.info("Nenhum resultado de parâmetro para este ponto.")
 
-        aba_parametro, aba_iqa = st.tabs(["Evolução do parâmetro", "Histórico do IQA"])
-        with aba_parametro:
-            if param_ids:
-                param = disponiveis.loc[disponiveis["id"] == st.session_state.parametro_publico].iloc[0]
-                serie = dados_pt[dados_pt["param_id"] == st.session_state.parametro_publico]
-                grafico_temporal(serie, param["nome"], param)
-            else:
-                st.info("Nenhum resultado de parâmetro para este ponto.")
-        with aba_iqa:
-            serie_iqa = dados_pt[dados_pt["parametro"].astype(str).str.startswith("IQA (", na=False)]
+    st.write("")
+    with st.container(border=True):
+        titulo_secao("Evolução do IQA por ponto")
+        # Filtro independente: comparar o IQA não altera o ponto escolhido no gráfico de parâmetros.
+        ids_com_iqa = resultados.loc[
+            resultados["parametro"].astype(str).str.startswith("IQA (", na=False), "ponto_id"
+        ].dropna().astype(int).drop_duplicates().tolist()
+        ids_com_iqa = [pid for pid in ids if pid in ids_com_iqa]
+        if ids_com_iqa:
+            if st.session_state.get("ponto_iqa_individual") not in ids_com_iqa:
+                st.session_state.ponto_iqa_individual = (
+                    st.session_state.ponto_publico if st.session_state.ponto_publico in ids_com_iqa
+                    else ids_com_iqa[0]
+                )
+            st.selectbox("Ponto para visualizar o IQA", ids_com_iqa,
+                         format_func=lambda pid: nomes_pontos[pid], key="ponto_iqa_individual")
+            dados_iqa_ponto = resultados[resultados["ponto_id"] == st.session_state.ponto_iqa_individual]
+            serie_iqa = dados_iqa_ponto[
+                dados_iqa_ponto["parametro"].astype(str).str.startswith("IQA (", na=False)
+            ]
             grafico_iqa(serie_iqa, faixas)
+        else:
+            st.info("Ainda não existem valores de IQA registrados para os pontos.")
 
     if not resultados.empty:
         exportar = resultados[resultados["ponto_id"] == st.session_state.ponto_publico].copy()
@@ -1303,11 +1336,10 @@ def admin_coletas(pontos, parametros, amostras, coletas):
 
 def admin_pontos(pontos):
     st.title("Pontos de coleta")
-    st.caption("Cadastre localizações geográficas, edite informações e arquive pontos inativos.")
-    col_t, col_b = st.columns([3, 1], vertical_alignment="center")
+    col_t, col_b = st.columns([5.5, 1], vertical_alignment="center")
     with col_t:
         titulo_secao("Pontos cadastrados", f"{len(pontos)} registros no banco de dados")
-    if col_b.button("+ Novo ponto", type="primary", use_container_width=True):
+    if col_b.button("+ Novo ponto", type="secondary", use_container_width=True, key="novo_ponto_admin"):
         st.session_state.editor_ponto_token = None
         formulario_ponto()
     with st.expander('Importar pontos UTM (CSV)', expanded=False):
@@ -1367,10 +1399,9 @@ def admin_pontos(pontos):
 
 def admin_parametros(parametros):
     st.title("Parâmetros ambientais")
-    st.caption("Gerencie unidades e referências legais contextualizadas para os parâmetros monitorados.")
     col_t, col_b = st.columns([3, 1], vertical_alignment="center")
     with col_t:
-        titulo_secao("Parâmetros cadastrados", "Somente referências revisadas são utilizadas na consulta pública.")
+        titulo_secao("Parâmetros cadastrados")
     if col_b.button("+ Novo parâmetro", type="primary", use_container_width=True):
         formulario_parametro()
     busca, inativos = st.columns([3, 1], vertical_alignment="bottom")
