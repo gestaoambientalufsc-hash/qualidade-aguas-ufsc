@@ -544,9 +544,9 @@ def grafico_cobertura_campanhas(resultados):
     resumo = resumo.sort_values("dia")
     fig = go.Figure()
     fig.add_trace(go.Bar(x=resumo["data_rotulo"], y=resumo["pontos"], name="Pontos amostrados",
-                         marker_color="#2563EB", bordercolor="white"))
+                         marker=dict(color="#2563EB", line=dict(color="white", width=1))))
     fig.add_trace(go.Bar(x=resumo["data_rotulo"], y=resumo["parametros"], name="Parâmetros medidos",
-                         marker_color="#93C5FD", bordercolor="white"))
+                         marker=dict(color="#93C5FD", line=dict(color="white", width=1))))
     fig.update_layout(
         barmode="group", height=315, paper_bgcolor="white", plot_bgcolor="white",
         margin=dict(l=8, r=8, t=20, b=12),
@@ -620,7 +620,7 @@ def grafico_comparacao_iqa_multiplos(resultados, ponto_ids, pontos, faixas, foco
             name=mapa_rotulos.get(pid, str(pid)),
             line=dict(color=cor, width=largura),
             marker=dict(size=10, color=cor, line=dict(color="white", width=1.4)),
-            customdata=serie["dia"].dt.strftime("%d/%m/%Y"),
+            customdata=serie["data_rotulo"],
             hovertemplate="%{fullData.name}<br>%{customdata}<br>IQA: <b>%{y:.1f}</b><extra></extra>",
         ))
     for _, fx in faixas.iterrows():
