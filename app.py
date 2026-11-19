@@ -211,6 +211,32 @@ section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bott
  .brand-title {font-size:16px;}
  .brand-logo {width:68px;height:68px;}
 }
+
+/* Identidade visual global: azul; cores de classificação IQA ficam só nos gráficos. */
+:root { --primary-color: #2563EB; }
+[data-testid="stMultiSelect"] [data-baseweb="tag"],
+[data-testid="stMultiSelect"] span[data-baseweb="tag"],
+.stMultiSelect [data-baseweb="tag"],
+[data-baseweb="select"] [data-baseweb="tag"] {
+  background-color:#2563EB !important;
+  border:1px solid #1D4ED8 !important;
+  color:#FFFFFF !important;
+  border-radius:7px !important;
+}
+[data-testid="stMultiSelect"] [data-baseweb="tag"] *,
+.stMultiSelect [data-baseweb="tag"] *,
+[data-baseweb="select"] [data-baseweb="tag"] * {
+  color:#FFFFFF !important;
+  fill:#FFFFFF !important;
+}
+[data-testid="stMultiSelect"] [data-baseweb="tag"] svg,
+.stMultiSelect [data-baseweb="tag"] svg {stroke:#FFFFFF !important;}
+[data-testid="stMultiSelect"] [data-baseweb="select"]:focus-within > div,
+[data-testid="stSelectbox"] [data-baseweb="select"]:focus-within > div {
+ border-color:#2563EB !important; box-shadow:0 0 0 1px #2563EB !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {color:#2563EB !important;}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {background:#2563EB !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -385,52 +411,70 @@ def _preparar_serie_grafico(dados):
     return serie, datas
 
 
-def _layout_eixo_coletas(fig, datas, altura=315, eixo_y=""):
-    # Categoria preserva o ordenamento cronológico sem inserir dias intermediários.
+def _layout_eixo_coletas(fig, datas, altura=320, eixo_y=""):
+    """Datas categóricas: nenhum dia artificial entre as coletas.
+
+    Deixa respiro horizontal e vertical para que bolinhas e rótulos não sejam cortados.
+    """
+    qt = len(datas)
+    largura_x = [-0.35, max(qt - 1 + 0.35, 0.35)] if qt else [-0.5, 0.5]
     fig.update_layout(
         height=altura, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=8, r=8, t=20, b=12),
+        margin=dict(l=14, r=28, t=35, b=34),
         xaxis=dict(type="category", categoryorder="array", categoryarray=datas,
                    tickmode="array", tickvals=datas, ticktext=datas,
                    showgrid=False, title="", automargin=True,
-                   tickangle=-30 if len(datas) > 7 else 0),
-        yaxis=dict(gridcolor="#EEF3F5", zeroline=False, title=eixo_y),
+                   range=largura_x, ticks="", fixedrange=False,
+                   tickangle=-30 if qt > 7 else 0),
+        yaxis=dict(gridcolor="#EFF3F8", zeroline=False, title=eixo_y,
+                   automargin=True, ticks=""),
         hovermode="closest", showlegend=False,
-        font=dict(family="Montserrat", color=NAVY, size=11),
+        hoverlabel=dict(bgcolor="white"),
+        font=dict(family="Montserrat", color="#334155", size=11),
     )
+
 
 
 def grafico_temporal(dados, parametro, config_param):
     if dados.empty:
-        st.info("Ainda não existem resultados para este parâmetro no ponto selecionado.")
+        st.info("Não há medições registradas para este parâmetro no ponto selecionado.")
         return
     dados, datas = _preparar_serie_grafico(dados)
     if dados.empty:
-        st.info("Sem medições registradas para essa seleção.")
+        st.info("Não há resultados para essa seleção.")
         return
+    valores = dados["valor"].astype(float)
+    unidade = "" if config_param["unidade"] == "-" else str(config_param["unidade"])
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers",
+        x=dados["data_rotulo"], y=valores,
+        mode="lines+markers+text",
         name="Medições", connectgaps=False,
-        line=dict(color="#2563EB", width=3),
-        marker=dict(size=11, color="#2563EB", line=dict(color="white", width=1.5)),
-        fill="tozeroy", fillcolor="rgba(37,99,235,0.08)",
-        customdata=dados["dia"].dt.strftime("%d/%m/%Y"),
-        hovertemplate="%{customdata}<br><b>%{y:.5f}</b><extra></extra>",
+        line=dict(color="#2563EB", width=1.7),
+        marker=dict(size=9, color="#2563EB", line=dict(color="white", width=1.5)),
+        text=[formatar_valor(v) for v in valores],
+        textposition="top center", textfont=dict(size=12, color="#1D4ED8"),
+        cliponaxis=False,
+        customdata=dados["data_rotulo"],
+        hovertemplate="%{customdata}<br><b>%{y:.5f}</b> " + unidade + "<extra></extra>",
     ))
     if bool(config_param.get("referencia_validada", 0)):
         tipo = config_param["tipo_limite"]
-        for chave, rotulo in (("limite_min", "Referência mínima"), ("limite_max", "Referência máxima")):
+        for chave, rotulo in (("limite_min", "Referência mínima"),
+                              ("limite_max", "Referência máxima")):
             if ((chave == "limite_min" and tipo in ("minimo", "intervalo")) or
-                    (chave == "limite_max" and tipo in ("maximo", "intervalo"))):
+                (chave == "limite_max" and tipo in ("maximo", "intervalo"))):
                 valor = config_param[chave]
                 if pd.notna(valor):
-                    fig.add_hline(y=float(valor), line_dash="dash", line_color="#F59E0B",
-                                  annotation_text=rotulo, annotation_position="top left")
-    unidade = "" if config_param["unidade"] == "-" else config_param["unidade"]
-    _layout_eixo_coletas(fig, datas, eixo_y=unidade)
-    fig.update_layout(hoverlabel=dict(bgcolor="white"), showlegend=False)
+                    fig.add_hline(y=float(valor), line_dash="dot", line_width=1.2,
+                                  line_color="#94A3B8", annotation_text=rotulo,
+                                  annotation_position="top left")
+    _layout_eixo_coletas(fig, datas, altura=315, eixo_y=unidade)
+    baixo, alto = float(valores.min()), float(valores.max())
+    margem = max((alto - baixo) * .16, max(abs(baixo), abs(alto)) * .09, .4)
+    fig.update_yaxes(range=[min(0, baixo-margem) if baixo >= 0 else baixo-margem, alto+margem*1.6])
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
 
 
 def grafico_iqa(dados, faixas):
@@ -439,31 +483,31 @@ def grafico_iqa(dados, faixas):
         return
     dados, datas = _preparar_serie_grafico(dados)
     if dados.empty:
-        st.info("Ainda não há medições de IQA válidas para este ponto.")
+        st.info("Ainda não existem medições válidas de IQA neste ponto.")
         return
-
     cores, categorias = [], []
     for valor in dados["valor"]:
         faixa = classificar_iqa(valor, faixas)
         cores.append(str(faixa["cor_texto"]) if faixa is not None else "#64748B")
         categorias.append(str(faixa["nome"]) if faixa is not None else "Indefinida")
-
     fig = go.Figure()
     for _, fx in faixas.iterrows():
         fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
                       fillcolor=fx["cor_grafico"], opacity=1,
                       layer="below", line_width=0)
     fig.add_trace(go.Scatter(
-        x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers",
+        x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers+text",
         name="IQA", connectgaps=False,
-        line=dict(color="#475569", width=3),
-        marker=dict(size=13, color=cores, line=dict(color="white", width=2)),
+        line=dict(color="#475569", width=1.7),
+        marker=dict(size=10, color=cores, line=dict(color="white", width=1.6)),
+        text=[formatar_valor(v) for v in dados["valor"]],
+        textposition="top center", textfont=dict(color="#334155", size=11),
+        cliponaxis=False,
         customdata=list(zip(dados["data_rotulo"], categorias)),
-        hovertemplate="%{customdata[0]}<br>IQA: <b>%{y:.1f}</b><br>%{customdata[1]}<extra></extra>",
+        hovertemplate="%{customdata[0]}<br>IQA: <b>%{y:.2f}</b><br>%{customdata[1]}<extra></extra>",
     ))
     _layout_eixo_coletas(fig, datas, eixo_y="IQA (0–100)")
-    fig.update_yaxes(range=[0, 100])
-    fig.update_layout(hoverlabel=dict(bgcolor="white"), showlegend=False)
+    fig.update_yaxes(range=[0, 104])
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     itens = "".join(
         f'<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
@@ -471,7 +515,10 @@ def grafico_iqa(dados, faixas):
         f'border-radius:50%;display:inline-block"></span>{txt(fx.nome)}</span>'
         for fx in faixas.sort_values("valor_min").itertuples()
     )
-    st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:#64748B;margin:2px 0 8px">{itens}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:12px;'
+                f'font-size:12px;color:#64748B;margin:2px 0 8px">{itens}</div>',
+                unsafe_allow_html=True)
+
 
 
 def preparar_resultados_publicos(resultados):
@@ -566,7 +613,7 @@ def grafico_distribuicao_iqa(campanha_df, faixas):
 
 
 def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
-    """Gráfico horizontal de pontos: permanece legível com 1 ou 35 locais."""
+    """Comparação por marcadores azuis, sem barras enormes e com valor exato."""
     dados = campanha_df[campanha_df["param_id"] == int(parametro_id)].copy()
     if dados.empty:
         st.info("Nenhum ponto possui esse parâmetro na campanha selecionada.")
@@ -577,46 +624,45 @@ def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
     dados["ordem"] = dados["ponto_id"].map(ordem)
     dados = dados.sort_values("ordem")
     param = parametros[parametros["id"] == int(parametro_id)].iloc[0]
-    unidade = "" if str(param["unidade"]) == "-" else f" {param['unidade']}"
+    unidade = "" if str(param["unidade"]) == "-" else str(param["unidade"])
     rotulos = [f"P{row.codigo}" if str(row.codigo).isdigit() else str(row.codigo)
                for row in dados.itertuples()]
-    fig = go.Figure()
-    # Guias sutis no lugar de barras maciças, inclusive com apenas uma medição.
-    for rotulo, valor in zip(rotulos, dados["valor"]):
-        fig.add_shape(type="line", x0=0, x1=float(valor), y0=rotulo, y1=rotulo,
-                      line=dict(color="#BFDBFE", width=4))
-    fig.add_trace(go.Scatter(
+    fig = go.Figure(go.Scatter(
         x=dados["valor"], y=rotulos, mode="markers+text",
-        marker=dict(size=15, color="#2563EB", line=dict(color="white", width=2)),
+        marker=dict(size=11, color="#2563EB", line=dict(color="white", width=1.7)),
         text=[formatar_valor(v) for v in dados["valor"]],
-        textposition="middle right", textfont=dict(color=NAVY, size=12),
+        textposition="middle right", textfont=dict(color="#1D4ED8", size=12),
+        cliponaxis=False,
         customdata=dados[["local", "registros"]].values,
-        hovertemplate="<b>%{y}</b><br>%{customdata[0]}<br>Valor: <b>%{x:.5f}</b>" +
-                      unidade + "<br>Medições: %{customdata[1]}<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>%{customdata[0]}<br>Valor: <b>%{x:.5f}</b> " + unidade +
+                      "<br>Medições: %{customdata[1]}<extra></extra>",
         showlegend=False,
     ))
     valores = dados["valor"].astype(float)
-    minimo = min(0.0, float(valores.min()))
-    maximo = max(0.0, float(valores.max()))
-    amplitude = max(maximo - minimo, abs(maximo), 1.0)
+    minimo, maximo = float(valores.min()), float(valores.max())
+    span = max(maximo - minimo, abs(minimo) * .15, abs(maximo) * .15, 1.0)
     fig.update_layout(
-        height=max(260, min(850, 110 + len(dados) * 31)),
+        height=max(220, min(1050, 125 + len(dados) * 32)),
         paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=10, r=70, t=24, b=25),
-        xaxis=dict(title=unidade.strip(), gridcolor="#EDF2F7", zeroline=False,
-                   range=[minimo - .08 * amplitude, maximo + .24 * amplitude]),
+        margin=dict(l=18, r=85, t=23, b=32),
+        xaxis=dict(title=unidade, gridcolor="#EFF3F8", zeroline=False,
+                   range=[minimo - .18*span, maximo + .40*span], ticks=""),
         yaxis=dict(title="", type="category", categoryorder="array",
-                   categoryarray=list(reversed(rotulos)), showgrid=False),
+                   categoryarray=list(reversed(rotulos)), showgrid=False, ticks=""),
         hoverlabel=dict(bgcolor="white"),
-        font=dict(family="Montserrat", color=NAVY, size=11),
+        font=dict(family="Montserrat", color="#334155", size=11),
+        showlegend=False,
     )
     if bool(param.get("referencia_validada", 0)):
         tipo = param["tipo_limite"]
         if tipo in ("minimo", "intervalo") and pd.notna(param["limite_min"]):
-            fig.add_vline(x=float(param["limite_min"]), line_dash="dash", line_color="#64748B")
+            fig.add_vline(x=float(param["limite_min"]), line_dash="dot", line_width=1,
+                          line_color="#94A3B8")
         if tipo in ("maximo", "intervalo") and pd.notna(param["limite_max"]):
-            fig.add_vline(x=float(param["limite_max"]), line_dash="dash", line_color="#64748B")
+            fig.add_vline(x=float(param["limite_max"]), line_dash="dot", line_width=1,
+                          line_color="#94A3B8")
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
 
 
 def grafico_comparacao_iqa_multiplos(resultados, ponto_ids, pontos, faixas, foco_id=None):
@@ -633,43 +679,34 @@ def grafico_comparacao_iqa_multiplos(resultados, ponto_ids, pontos, faixas, foco
     mapa_rotulos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
     paleta = ["#17324D", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"]
     fig = go.Figure()
-    for i, pid in enumerate([int(x) for x in ponto_ids]):
+    selecionados = [int(x) for x in ponto_ids]
+    total_registros = len(resumo)
+    for i, pid in enumerate(selecionados):
         serie = resumo[resumo["ponto_id"] == pid]
         if serie.empty:
             continue
         cor = paleta[i % len(paleta)]
-        largura = 4 if foco_id is not None and pid == int(foco_id) else 2.5
         fig.add_trace(go.Scatter(
-            x=serie["data_rotulo"], y=serie["valor"], mode="lines+markers",
+            x=serie["data_rotulo"], y=serie["valor"],
+            mode="lines+markers+text" if len(selecionados) <= 2 and total_registros <= 12 else "lines+markers",
             name=mapa_rotulos.get(pid, str(pid)),
-            line=dict(color=cor, width=largura),
-            marker=dict(size=10, color=cor, line=dict(color="white", width=1.4)),
+            line=dict(color=cor, width=2.0 if foco_id is not None and pid == int(foco_id) else 1.5),
+            marker=dict(size=8, color=cor, line=dict(color="white", width=1.5)),
+            text=[formatar_valor(v) for v in serie["valor"]],
+            textposition="top center", textfont=dict(size=11, color=cor),
+            cliponaxis=False,
             customdata=serie["data_rotulo"],
-            hovertemplate="%{fullData.name}<br>%{customdata}<br>IQA: <b>%{y:.1f}</b><extra></extra>",
+            hovertemplate="%{fullData.name}<br>%{customdata}<br>IQA: <b>%{y:.2f}</b><extra></extra>",
         ))
     for _, fx in faixas.iterrows():
-        fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]), fillcolor=fx["cor_grafico"],
-                      opacity=1, layer="below", line_width=0)
+        fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
+                      fillcolor=fx["cor_grafico"], opacity=1, layer="below", line_width=0)
     _layout_eixo_coletas(fig, datas, altura=350, eixo_y="IQA (0–100)")
-    fig.update_yaxes(range=[0, 100])
-    fig.update_layout(legend=dict(orientation="h", y=1.15, x=0), hoverlabel=dict(bgcolor="white"))
+    fig.update_yaxes(range=[0, 104])
+    fig.update_layout(legend=dict(orientation="h", y=1.13, x=0),
+                      showlegend=len(selecionados) > 1)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.caption("Para manter a leitura clara, a comparação temporal do IQA mostra até 6 pontos por vez, todos em tons de azul.")
 
-
-# -----------------------------------------------------------------------------
-# Sessão, acesso e navegação.
-# -----------------------------------------------------------------------------
-if "autenticado" not in st.session_state:
-    st.session_state.autenticado = False
-if "pagina" not in st.session_state:
-    st.session_state.pagina = "publico"
-if "admin_menu" not in st.session_state:
-    st.session_state.admin_menu = "Visão geral"
-if "falhas_login" not in st.session_state:
-    st.session_state.falhas_login = 0
-if "bloqueio_ate" not in st.session_state:
-    st.session_state.bloqueio_ate = 0.0
 
 
 def credenciais_admin():
@@ -836,7 +873,7 @@ def painel_publico():
                 default_points.append(pid)
         comparar = st.multiselect("Pontos para comparar", options=ids_iqa, default=default_points,
                                   format_func=lambda pid: nomes_pontos.get(pid, str(pid)), max_selections=6,
-                                  key="comparar_iqa_publico")
+                                  key="comparar_iqa_publico", placeholder="Selecione os pontos")
         if comparar:
             grafico_comparacao_iqa_multiplos(resultados, comparar, pontos, faixas, foco_id=st.session_state.ponto_publico)
         else:
