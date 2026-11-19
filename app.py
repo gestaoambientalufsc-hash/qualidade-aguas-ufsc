@@ -691,16 +691,11 @@ def formulario_parametro(param=None):
                                value=str(param["aplicabilidade"]) if param is not None else "")
         valida = st.checkbox("Referência revisada e validada para o contexto do monitoramento",
                              value=bool(param["referencia_validada"]) if param is not None else False)
-        st.divider()
-        compoe = st.checkbox("Este parâmetro participa da metodologia do IQA",
-                             value=bool(param["compoe_iqa"]) if param is not None else False)
-        i1, i2 = st.columns([1, 2])
-        peso = i1.number_input("Peso do IQA (documental)", min_value=0.000001,
-                               value=float(param["peso_iqa"]) if param is not None and pd.notna(param["peso_iqa"]) else None,
-                               format="%.5f", disabled=not compoe)
-        curva = i2.text_input("Curva/fonte do subíndice", value=str(param["curva_iqa"]) if param is not None else "",
-                              disabled=not compoe)
-        st.caption("Pesos e curvas são documentais: este projeto não calcula automaticamente o IQA.")
+        # Preservar os metadados antigos, sem exibir campos de metodologia do IQA.
+        compoe = bool(param["compoe_iqa"]) if param is not None else False
+        peso = (float(param["peso_iqa"])
+                if param is not None and pd.notna(param["peso_iqa"]) else None)
+        curva = str(param["curva_iqa"] or "") if param is not None else ""
         salvar = st.button("Salvar parâmetro", type="primary", use_container_width=True,
                            key="salvar_parametro_modal")
     if salvar:
