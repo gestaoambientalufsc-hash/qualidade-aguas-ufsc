@@ -446,6 +446,49 @@ def salvar_amostra(ponto_id, data_amostra, valores, identificador="", observacoe
         return id_
 
 
+def salvar_iqa_amostra(amostra_id, novo_valor):
+    """Insere ou atualiza o IQA de uma amostra sem alterar os demais resultados.
+
+    Utiliza uma única transação e impede a criação de um segundo IQA na mesma amostra.
+    """
+    try:
+        numero = float(novo_valor)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Informe um valor numérico para o IQA.") from exc
+    if not math.isfinite(numero) or not 0 <= numero <= 100:
+        raise ValueError("O IQA deve estar entre 0 e 100.")
+
+    with conexao() as con:
+        amostra = con.execute(
+            "SELECT id, ponto_id, data_amostra FROM amostras WHERE id=?",
+            (int(amostra_id),),
+        ).fetchone()
+        if amostra is None:
+            raise ValueError("A coleta selecionada não existe.")
+        parametro = con.execute(
+            "SELECT id FROM parametros WHERE nome LIKE 'IQA (%' ORDER BY id LIMIT 1"
+        ).fetchone()
+        if parametro is None:
+            raise ValueError("O parâmetro IQA não está cadastrado.")
+        pid = int(parametro["id"])
+        existente = con.execute(
+            "SELECT id FROM coletas WHERE amostra_id=? AND parametro_id=? ORDER BY id LIMIT 1",
+            (int(amostra_id), pid),
+        ).fetchone()
+        if existente is not None:
+            con.execute(
+                "UPDATE coletas SET valor=? WHERE id=?",
+                (numero, int(existente["id"])),
+            )
+        else:
+            con.execute(
+                """INSERT INTO coletas(amostra_id, ponto_id, parametro_id, data_amostra, valor)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (int(amostra_id), int(amostra["ponto_id"]), pid,
+                 str(amostra["data_amostra"]), numero),
+            )
+
+
 def atualizar_valor_coleta(coleta_id, novo_valor):
     """Edita um único parâmetro medido sem modificar outras coletas ou parâmetros."""
     numero = float(novo_valor)
