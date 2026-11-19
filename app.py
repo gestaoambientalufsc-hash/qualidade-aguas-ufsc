@@ -909,42 +909,105 @@ def admin_visao_geral(pontos, parametros, coletas, amostras):
         st.caption("O IQA é um resultado preenchido manualmente. O cadastro de faixas não executa o cálculo do índice.")
 
 
+@st.dialog("Editar resultado", width="small", on_dismiss="rerun")
+def editar_resultado_individual(resultado):
+    """Edita somente o resultado selecionado, preservando as outras medições."""
+    st.markdown(f"**{txt(resultado['parametro'])}**", unsafe_allow_html=True)
+    st.caption(f"{formatar_data(resultado['data_amostra'])} · "
+               f"{resultado['codigo']} · {resultado['local']}")
+    unidade = str(resultado.get("unidade") or "")
+    if unidade == "-":
+        unidade = ""
+    with st.form(f"form_editar_medicao_{int(resultado['id'])}"):
+        valor = st.number_input(
+            f"Valor medido{(' (' + unidade + ')') if unidade else ''}",
+            value=float(resultado["valor"]), step=0.00001, format="%.5f",
+        )
+        confirmar = st.form_submit_button("Salvar valor", type="primary", use_container_width=True)
+    if confirmar:
+        try:
+            if not pd.notna(valor):
+                raise ValueError("Informe um valor válido.")
+            parametro_atual = db.buscar_parametros()
+            selecionado = parametro_atual[parametro_atual["id"] == int(resultado["param_id"])]
+            if not selecionado.empty:
+                _validar_resultados_semanticos(selecionado, {int(resultado["param_id"]): valor})
+            db.atualizar_valor_coleta(int(resultado["id"]), valor)
+            st.session_state.mensagem = "Resultado atualizado com sucesso."
+            st.rerun()
+        except (ValueError, TypeError) as e:
+            st.error(str(e))
+
+
+def chave_ordenacao_ponto(codigo):
+    import re
+    partes = re.split(r"(\d+)", str(codigo).casefold())
+    return tuple((1, int(p)) if p.isdigit() else (0, p) for p in partes)
+
+
 def admin_coletas(pontos, parametros, amostras, coletas):
     st.title("Coletas e análises")
-    st.caption("Registre medições por ponto e data ou consulte e edite o histórico.")
     tab_nova, tab_historico = st.tabs(["Registrar coleta", "Histórico de coletas"])
     with tab_nova:
         formulario_amostra(pontos[pontos["ativo"] == 1], parametros[parametros["ativo"] == 1])
     with tab_historico:
-        titulo_secao("Coletas registradas")
-        if amostras.empty:
-            st.info("Nenhuma coleta registrada.")
+        if amostras.empty or coletas.empty:
+            st.info("Ainda não existem medições registradas.")
             return
-        filtro = st.text_input("Buscar por ponto ou local", placeholder="Pesquisar...", key="busca_amostras")
-        visual = amostras.copy()
-        if filtro.strip():
-            alvo = filtro.lower().strip()
-            visual = visual[visual[["codigo", "local"]].fillna("").astype(str)
-                            .apply(lambda col: col.str.lower().str.contains(alvo, regex=False)).any(axis=1)]
-        tabela = visual[["id", "data_amostra", "codigo", "local", "qtd_parametros"]].copy()
-        tabela["data_amostra"] = tabela["data_amostra"].map(formatar_data)
-        tabela.columns = ["ID", "Data", "Código", "Local", "Resultados"]
-        st.dataframe(tabela, hide_index=True, use_container_width=True)
-        if visual.empty:
+
+        # Amostras sem resultados não aparecem no histórico de análises.
+        dados = coletas.dropna(subset=["amostra_id", "valor", "data_amostra"]).copy()
+        if dados.empty:
+            st.info("Ainda não existem medições registradas.")
             return
-        ids = visual["id"].astype(int).tolist()
-        opcoes = {int(a["id"]): f"{formatar_data(a['data_amostra'])} · {a['codigo']} · {a['local']} · #{a['id']}"
-                  for _, a in visual.iterrows()}
-        escolha = st.selectbox("Selecione uma coleta para gerenciar", ids, format_func=lambda v: opcoes[v])
-        c1, c2, c3 = st.columns([1, 1, 3])
-        registro = amostras.loc[amostras["id"] == escolha].iloc[0]
-        if c1.button("Editar coleta", use_container_width=True):
-            editar_amostra_dialogo(registro, pontos, parametros)
-        if c2.button("Excluir coleta", use_container_width=True):
-            confirmar_exclusao_amostra(escolha)
-        if not coletas.empty:
-            st.download_button("Exportar medições (CSV)", coletas.to_csv(index=False, sep=";").encode("utf-8-sig"),
-                               "medicoes_aguas_ufsc.csv", "text/csv")
+        dados["amostra_id"] = dados["amostra_id"].astype(int)
+        dados["dia"] = pd.to_datetime(dados["data_amostra"], errors="coerce").dt.date
+        dados = dados.dropna(subset=["dia"])
+        if dados.empty:
+            st.info("Nenhuma data de coleta válida foi encontrada.")
+            return
+
+        # Cada data mostra apenas os pontos efetivamente amostrados naquele dia.
+        # As datas mais recentes aparecem primeiro.
+        for dia in sorted(dados["dia"].unique(), reverse=True):
+            dados_dia = dados[dados["dia"] == dia]
+            pontos_dia = dados_dia[["ponto_id", "codigo", "local"]].drop_duplicates("ponto_id")
+            # Ordenação natural de códigos (1, 2, ..., 10).
+            pontos_dia = pontos_dia.sort_values("codigo", key=lambda col: col.map(chave_ordenacao_ponto))
+            identificadores = pontos_dia["ponto_id"].astype(int).tolist()
+            rotulos = {int(r["ponto_id"]): rotulo_ponto(r) for _, r in pontos_dia.iterrows()}
+            n_pontos = len(identificadores)
+            with st.expander(f"{dia.strftime('%d/%m/%Y')}  ·  {n_pontos} {'ponto' if n_pontos == 1 else 'pontos'}"):
+                # O seletor funciona como menu suspenso. Evita expanders aninhados,
+                # não suportados por algumas versões do Streamlit.
+                escolhido = st.selectbox(
+                    "Ponto de coleta", options=identificadores,
+                    index=None, placeholder="Selecione um ponto desta data",
+                    format_func=lambda pid: rotulos[pid],
+                    key=f"historico_ponto_{dia.isoformat()}",
+                )
+                if escolhido is None:
+                    continue
+                resultados_pt = dados_dia[dados_dia["ponto_id"] == escolhido]
+                amostras_pt = resultados_pt["amostra_id"].drop_duplicates().tolist()
+                for id_amostra in amostras_pt:
+                    resultados_amostra = resultados_pt[resultados_pt["amostra_id"] == id_amostra]
+                    if len(amostras_pt) > 1:
+                        st.caption(f"Amostra #{id_amostra}")
+                    with st.container(border=True):
+                        cab = st.columns([4, 1.8, 1.1], vertical_alignment="center")
+                        cab[0].caption("PARÂMETRO")
+                        cab[1].caption("VALOR")
+                        cab[2].caption("AÇÃO")
+                        for _, medicao in resultados_amostra.sort_values("parametro").iterrows():
+                            c1, c2, c3 = st.columns([4, 1.8, 1.1], vertical_alignment="center")
+                            c1.write(medicao["parametro"])
+                            unidade = str(medicao.get("unidade") or "")
+                            sufixo = "" if unidade == "-" else f" {unidade}"
+                            c2.write(f"{formatar_valor(medicao['valor'])}{sufixo}")
+                            if c3.button("Editar", key=f"editar_valor_{int(medicao['id'])}",
+                                         use_container_width=True):
+                                editar_resultado_individual(medicao.to_dict())
 
 
 def admin_pontos(pontos):
