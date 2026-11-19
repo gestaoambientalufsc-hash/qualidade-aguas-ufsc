@@ -290,6 +290,34 @@ def atualizar_ponto(id_ponto, codigo, local, lat, lon):
                     (codigo, local, lat, lon, int(id_ponto)))
 
 
+def importar_pontos_lote(pontos):
+    """Grava em transação única e ignora códigos preexistentes, sem alterar coletas."""
+    preparados = []
+    codigos_csv = set()
+    for indice, ponto in enumerate(pontos, start=2):
+        codigo = str(ponto['codigo']).strip()
+        local = str(ponto['local']).strip()
+        lat, lon = float(ponto['latitude']), float(ponto['longitude'])
+        if not codigo or not local or not math.isfinite(lat) or not math.isfinite(lon) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError(f'Linha {indice}: código, local ou coordenadas inválidos.')
+        if codigo.casefold() in codigos_csv:
+            raise ValueError(f'Código duplicado dentro do CSV: {codigo}')
+        codigos_csv.add(codigo.casefold())
+        preparados.append((codigo, local, lat, lon))
+    adicionados = ignorados = 0
+    with conexao() as con:
+        existentes = {str(row[0]).casefold() for row in con.execute('SELECT codigo FROM pontos')}
+        for codigo, local, lat, lon in preparados:
+            if codigo.casefold() in existentes:
+                ignorados += 1
+                continue
+            con.execute('INSERT INTO pontos (codigo,local,latitude,longitude) VALUES (?,?,?,?)',
+                        (codigo, local, lat, lon))
+            existentes.add(codigo.casefold())
+            adicionados += 1
+    return adicionados, ignorados
+
+
 def alterar_status_ponto(id_ponto, ativo):
     with conexao() as con:
         con.execute("UPDATE pontos SET ativo=? WHERE id=?", (int(bool(ativo)), int(id_ponto)))
