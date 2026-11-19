@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import date, datetime
@@ -179,8 +180,20 @@ def _df(sql, args=()):
 
 
 def buscar_pontos(ativos=None):
+    """Lista pontos na ordem natural do código: 1, 2, ..., 10, 11."""
     filtro = " WHERE ativo=1" if ativos is True else " WHERE ativo=0" if ativos is False else ""
-    return _df("SELECT * FROM pontos" + filtro + " ORDER BY codigo COLLATE NOCASE")
+    pontos = _df("SELECT * FROM pontos" + filtro)
+    if pontos.empty:
+        return pontos
+
+    # Preserva códigos alfanuméricos (P1, P2, P10) e valores numéricos.
+    # Apenas a ordem de apresentação muda: IDs e registros permanecem intactos.
+    def chave_natural(codigo):
+        partes = re.split(r"(\d+)", str(codigo).casefold())
+        return tuple((1, int(p)) if p.isdigit() else (0, p) for p in partes)
+
+    ordem = sorted(range(len(pontos)), key=lambda i: chave_natural(pontos.iloc[i]["codigo"]))
+    return pontos.iloc[ordem].reset_index(drop=True)
 
 
 def buscar_parametros(ativos=None):
