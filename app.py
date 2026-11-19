@@ -9,6 +9,10 @@ import hmac
 import html
 import os
 import time
+import io
+import math
+from pathlib import Path
+from pyproj import Transformer
 from datetime import date
 
 import folium
@@ -35,6 +39,72 @@ MUTED = "#64748B"
 BORDER = "#E2E8EE"
 SAND = "#F5F8FA"
 MAP_API_KEY = "af1b2140-1a60-4eec-9983-9406fa69f237"
+
+# Fonte não declara o datum. Adotado provisoriamente SIRGAS 2000 / UTM 22S.
+UTM_CRS = "EPSG:31982"
+WGS84_CRS = "EPSG:4326"
+UTM_PARA_GPS = Transformer.from_crs(UTM_CRS, WGS84_CRS, always_xy=True)
+GPS_PARA_UTM = Transformer.from_crs(WGS84_CRS, UTM_CRS, always_xy=True)
+
+
+def numero_pt_br(valor):
+    """Aceita 744.245,94, 6944464.32 e 744245,94."""
+    texto = str(valor).strip().replace(" ", "").replace("\u00a0", "")
+    if not texto or texto.lower() in ("nan", "none"):
+        raise ValueError("Informe as coordenadas UTM E e N.")
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    elif texto.count(".") > 1:
+        texto = texto.replace(".", "")
+    try:
+        return float(texto)
+    except ValueError as exc:
+        raise ValueError(f"Coordenada inválida: {valor}") from exc
+
+
+def converter_utm(e, n):
+    e, n = numero_pt_br(e), numero_pt_br(n)
+    if not (100000 <= e <= 900000 and 0 <= n <= 10000000):
+        raise ValueError("UTM fora do intervalo esperado: E 100.000–900.000 m; N 0–10.000.000 m.")
+    lon, lat = UTM_PARA_GPS.transform(e, n)
+    if not (math.isfinite(lat) and math.isfinite(lon) and -90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValueError("A conversão UTM produziu coordenadas inválidas.")
+    return lat, lon
+
+
+def formatar_utm(n):
+    return f"{float(n):,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def ler_csv_utm(uploaded):
+    raw = uploaded.getvalue()
+    try:
+        txt_csv = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        txt_csv = raw.decode("cp1252")
+    tabela = pd.read_csv(io.StringIO(txt_csv), sep=";", dtype=str, keep_default_na=False)
+    tabela.columns = [col.strip().lower() for col in tabela.columns]
+    aliases = {"codigo": "codigo", "código": "codigo", "ponto": "codigo",
+               "local": "local", "localização": "local", "localizacao": "local",
+               "e (m)": "e", "e": "e", "e_m": "e", "este": "e",
+               "n (m)": "n", "n": "n", "n_m": "n", "norte": "n"}
+    tabela = tabela.rename(columns={col: aliases.get(col, col) for col in tabela.columns})
+    if len(set(tabela.columns)) != len(tabela.columns) or not {'codigo','local','e','n'}.issubset(tabela.columns):
+        raise ValueError("CSV precisa ter colunas: codigo;local;E (m);N (m).")
+    if len(tabela) > 1000:
+        raise ValueError("Importe no máximo 1.000 pontos por arquivo.")
+    convertidos = []
+    for i, row in tabela.iterrows():
+        try:
+            codigo, local = str(row['codigo']).strip(), str(row['local']).strip()
+            if not codigo or not local:
+                raise ValueError("Código e local são obrigatórios.")
+            lat, lon = converter_utm(row['e'], row['n'])
+            convertidos.append({'codigo':codigo, 'local':local, 'e':numero_pt_br(row['e']),
+                                'n':numero_pt_br(row['n']), 'latitude':lat, 'longitude':lon})
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Linha {i + 2}: {exc}") from exc
+    return pd.DataFrame(convertidos, columns=['codigo','local','e','n','latitude','longitude'])
 
 st.markdown("""
 <style>
@@ -468,13 +538,8 @@ def painel_publico():
         st.info("Nenhum ponto ativo cadastrado.")
         return
 
-    # Exibir no mapa apenas pontos com medições registradas.
-    ids_com_medicao = set(resultados["ponto_id"].dropna().astype(int)) if not resultados.empty else set()
-    pontos_mapa = pontos[pontos["id"].isin(ids_com_medicao)].copy()
-    if pontos_mapa.empty:
-        titulo_secao("Mapa dos Pontos")
-        st.info("Ainda não há pontos com medições registradas.")
-        return
+    # Exibir todos os pontos ativos, inclusive os recém-importados sem coletas.
+    pontos_mapa = pontos.copy()
 
     ids = pontos_mapa["id"].astype(int).tolist()
     nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos_mapa.iterrows()}
@@ -554,49 +619,48 @@ def painel_publico():
 @st.dialog("Cadastrar ou editar ponto", width="large", on_dismiss="rerun")
 def formulario_ponto(ponto=None):
     token = f"ponto_{int(ponto['id'])}" if ponto is not None else "ponto_novo"
-    if st.session_state.get("editor_ponto_token") != token:
+    lat_ant = float(ponto['latitude']) if ponto is not None and pd.notna(ponto['latitude']) else -27.601
+    lon_ant = float(ponto['longitude']) if ponto is not None and pd.notna(ponto['longitude']) else -48.518
+    if st.session_state.get('editor_ponto_token') != token:
         st.session_state.editor_ponto_token = token
-        st.session_state.editor_lat = float(ponto["latitude"]) if ponto is not None and pd.notna(ponto["latitude"]) else -27.601
-        st.session_state.editor_lon = float(ponto["longitude"]) if ponto is not None and pd.notna(ponto["longitude"]) else -48.518
-    st.caption("Selecione a localização no mapa; latitude e longitude são preenchidas automaticamente. Também é possível digitá-las.")
-    mp = folium.Map(location=[st.session_state.editor_lat, st.session_state.editor_lon],
-                    zoom_start=15, tiles=None, control_scale=True)
-    folium.TileLayer(
-        tiles=f"https://tiles.stadiamaps.com/tiles/alidade_smooth/{{z}}/{{x}}/{{y}}{{r}}.png?api_key={MAP_API_KEY}",
-        attr='&copy; <a href="https://stadiamaps.com/">Stadia Maps</a>, &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a>, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        name="Base"
-    ).add_to(mp)
-    folium.Marker([st.session_state.editor_lat, st.session_state.editor_lon], tooltip="Posição atual").add_to(mp)
-    resultado = st_folium(mp, height=230, use_container_width=True, key=f"editor_ponto_mapa_{token}",
-                         returned_objects=["last_clicked"])
-    if resultado and resultado.get("last_clicked"):
-        p = resultado["last_clicked"]
-        registro = (round(float(p["lat"]), 6), round(float(p["lng"]), 6))
-        if registro != st.session_state.get("editor_ponto_ultimo_clique"):
-            st.session_state.editor_lat, st.session_state.editor_lon = registro
-            st.session_state.editor_ponto_ultimo_clique = registro
-    with st.form("form_ponto_modal"):
+        st.session_state.editor_lat = lat_ant
+        st.session_state.editor_lon = lon_ant
+        st.session_state.editor_ponto_ultimo_clique = None
+    modo = st.radio('Tipo de coordenada', ['UTM (E / N)', 'Latitude / longitude'],
+                    horizontal=True, key=f'modo_coord_{token}')
+    st.caption('UTM zona 22 Sul · SIRGAS 2000 (EPSG:31982). Verifique o datum do levantamento.')
+
+    with st.form(f'form_ponto_{token}'):
         c1, c2 = st.columns([1, 2])
-        codigo = c1.text_input("Código *", value=str(ponto["codigo"]) if ponto is not None else "")
-        local = c2.text_input("Nome do local *", value=str(ponto["local"]) if ponto is not None else "")
+        codigo = c1.text_input('Código *', value=str(ponto['codigo']) if ponto is not None else '')
+        local = c2.text_input('Local *', value=str(ponto['local']) if ponto is not None else '')
         c3, c4 = st.columns(2)
-        lat = c3.number_input("Latitude", min_value=-90.0, max_value=90.0, step=0.000001,
-                              format="%.6f", key="editor_lat")
-        lon = c4.number_input("Longitude", min_value=-180.0, max_value=180.0, step=0.000001,
-                              format="%.6f", key="editor_lon")
-        salvar = st.form_submit_button("Salvar ponto", type="primary", use_container_width=True)
+        if modo == 'UTM (E / N)':
+            e_atual, n_atual = GPS_PARA_UTM.transform(lon_ant, lat_ant)
+            e_txt = c3.text_input('E (m) *', value=formatar_utm(e_atual), key=f'e_{token}',
+                                  help='Ex.: 744.245,94')
+            n_txt = c4.text_input('N (m) *', value=formatar_utm(n_atual), key=f'n_{token}',
+                                  help='Ex.: 6.944.464,32')
+            lat = lon = None
+        else:
+            lat = c3.number_input('Latitude', min_value=-90.0, max_value=90.0,
+                                   value=lat_ant, format='%.7f', key=f'lat_{token}')
+            lon = c4.number_input('Longitude', min_value=-180.0, max_value=180.0,
+                                   value=lon_ant, format='%.7f', key=f'lon_{token}')
+        salvar = st.form_submit_button('Salvar ponto', type='primary', use_container_width=True)
     if salvar:
         try:
+            if modo == 'UTM (E / N)':
+                lat, lon = converter_utm(e_txt, n_txt)
             if ponto is None:
                 db.inserir_ponto(codigo, local, lat, lon)
             else:
-                db.atualizar_ponto(int(ponto["id"]), codigo, local, lat, lon)
-            st.session_state.editor_ponto_token = ""
-            st.session_state.editor_ponto_ultimo_clique = None
-            st.session_state.mensagem = "Ponto salvo com sucesso."
+                db.atualizar_ponto(int(ponto['id']), codigo, local, lat, lon)
+            st.session_state.editor_ponto_token = None
+            st.session_state.mensagem = 'Ponto salvo com sucesso.'
             st.rerun()
-        except ValueError as e:
-            st.error(str(e))
+        except (ValueError, TypeError) as exc:
+            st.error(str(exc))
 
 
 @st.dialog("Cadastrar ou editar parâmetro", width="large", on_dismiss="rerun")
@@ -892,6 +956,27 @@ def admin_pontos(pontos):
     if col_b.button("+ Novo ponto", type="primary", use_container_width=True):
         st.session_state.editor_ponto_token = None
         formulario_ponto()
+    with st.expander('Importar pontos UTM (CSV)', expanded=False):
+        st.caption('Formato: codigo;local;E (m);N (m) · UTM zona 22 Sul, SIRGAS 2000.')
+        arquivo = st.file_uploader('Arquivo CSV', type=['csv'], key='importar_utm_csv')
+        if arquivo is not None:
+            try:
+                dados_importar = ler_csv_utm(arquivo)
+                st.dataframe(dados_importar.rename(columns={
+                    'codigo':'Código', 'local':'Local', 'e':'E (m)', 'n':'N (m)',
+                    'latitude':'Latitude', 'longitude':'Longitude',
+                }), hide_index=True, use_container_width=True)
+                st.caption(f'{len(dados_importar)} pontos no arquivo. Códigos já existentes serão ignorados.')
+                confirmacao = st.checkbox('Conferi os pontos e o sistema de coordenadas',
+                                           key='confirmar_importacao_utm')
+                if st.button('Importar pontos', type='primary', disabled=not confirmacao,
+                             key='botao_importar_utm'):
+                    adicionados, ignorados = db.importar_pontos_lote(dados_importar.to_dict('records'))
+                    st.session_state.mensagem = (f'{adicionados} pontos importados; '
+                                                  f'{ignorados} códigos já existentes ignorados.')
+                    st.rerun()
+            except (ValueError, KeyError) as exc:
+                st.error(str(exc))
     busca, incl = st.columns([3, 1], vertical_alignment="bottom")
     texto = busca.text_input("Pesquisar ponto", placeholder="Código ou local", label_visibility="collapsed")
     ver_inativos = incl.checkbox("Exibir arquivados", value=False)
