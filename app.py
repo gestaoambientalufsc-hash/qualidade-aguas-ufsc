@@ -1181,6 +1181,30 @@ def editar_resultado_individual(resultado):
             st.error(str(e))
 
 
+@st.dialog("IQA da coleta", width="small", on_dismiss="rerun")
+def editar_iqa_amostra(amostra_id, data_amostra, codigo, local, valor_atual=None):
+    """Permite incluir IQA ausente ou atualizar o resultado já registrado."""
+    st.caption(f"{formatar_data(data_amostra)} · {codigo} · {local}")
+    with st.form(f"form_iqa_amostra_{int(amostra_id)}"):
+        iqa = st.number_input(
+            "Valor do IQA (0 a 100)", min_value=0.0, max_value=100.0,
+            value=float(valor_atual) if valor_atual is not None else None,
+            step=0.1, format="%.2f", placeholder="Informe o IQA",
+        )
+        salvar = st.form_submit_button(
+            "Salvar IQA", type="primary", use_container_width=True,
+        )
+    if salvar:
+        try:
+            if iqa is None:
+                raise ValueError("Informe o valor do IQA antes de salvar.")
+            db.salvar_iqa_amostra(amostra_id, iqa)
+            st.session_state.mensagem = "IQA salvo com sucesso."
+            st.rerun()
+        except (ValueError, TypeError) as exc:
+            st.error(str(exc))
+
+
 def chave_ordenacao_ponto(codigo):
     import re
     partes = re.split(r"(\d+)", str(codigo).casefold())
@@ -1241,7 +1265,15 @@ def admin_coletas(pontos, parametros, amostras, coletas):
                         cab[0].caption("PARÂMETRO")
                         cab[1].caption("VALOR")
                         cab[2].caption("AÇÃO")
-                        for _, medicao in resultados_amostra.sort_values("parametro").iterrows():
+                        # IQA faz parte do histórico, mas também pode ser inserido
+                        # posteriormente, mesmo quando não constava na coleta original.
+                        iqa_existente = resultados_amostra[
+                            resultados_amostra["parametro"].apply(somente_iqa)
+                        ]
+                        outros_resultados = resultados_amostra[
+                            ~resultados_amostra["parametro"].apply(somente_iqa)
+                        ]
+                        for _, medicao in outros_resultados.sort_values("parametro").iterrows():
                             c1, c2, c3 = st.columns([4, 1.8, 1.1], vertical_alignment="center")
                             c1.write(medicao["parametro"])
                             unidade = str(medicao.get("unidade") or "")
@@ -1250,6 +1282,23 @@ def admin_coletas(pontos, parametros, amostras, coletas):
                             if c3.button("Editar", key=f"editar_valor_{int(medicao['id'])}",
                                          use_container_width=True):
                                 editar_resultado_individual(medicao.to_dict())
+                        coluna_nome, coluna_valor, coluna_acao = st.columns(
+                            [4, 1.8, 1.1], vertical_alignment="center"
+                        )
+                        coluna_nome.write("**IQA (Índice de Qualidade da Água)**")
+                        valor_iqa = (float(iqa_existente.iloc[0]["valor"])
+                                     if not iqa_existente.empty else None)
+                        coluna_valor.write(formatar_valor(valor_iqa) if valor_iqa is not None else "Não informado")
+                        rotulo_acao = "Editar IQA" if valor_iqa is not None else "Inserir IQA"
+                        if coluna_acao.button(
+                            rotulo_acao, key=f"gerenciar_iqa_{int(id_amostra)}",
+                            use_container_width=True,
+                        ):
+                            referencia = resultados_amostra.iloc[0]
+                            editar_iqa_amostra(
+                                int(id_amostra), referencia["data_amostra"],
+                                referencia["codigo"], referencia["local"], valor_iqa,
+                            )
 
 
 def admin_pontos(pontos):
