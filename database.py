@@ -446,6 +446,17 @@ def salvar_amostra(ponto_id, data_amostra, valores, identificador="", observacoe
         return id_
 
 
+def atualizar_valor_coleta(coleta_id, novo_valor):
+    """Edita um único parâmetro medido sem modificar outras coletas ou parâmetros."""
+    numero = float(novo_valor)
+    if not math.isfinite(numero):
+        raise ValueError("O resultado deve ser um número finito.")
+    with conexao() as con:
+        cur = con.execute("UPDATE coletas SET valor=? WHERE id=?", (numero, int(coleta_id)))
+        if cur.rowcount != 1:
+            raise ValueError("Resultado não encontrado para edição.")
+
+
 def excluir_amostra(amostra_id):
     with conexao() as con:
         con.execute("DELETE FROM coletas WHERE amostra_id=?", (int(amostra_id),))
