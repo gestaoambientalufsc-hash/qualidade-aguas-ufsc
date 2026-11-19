@@ -171,6 +171,14 @@ button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !im
 [data-baseweb="tag"] {background:#2563EB !important;color:white !important;border:1px solid #1D4ED8 !important;}
 [data-baseweb="tag"] span, [data-baseweb="tag"] svg {color:white !important;fill:white !important;}
 [data-baseweb="select"]:focus-within > div {border-color:#2563EB !important;}
+[class*="st-key-entrar_admin"] button {
+  width:46px !important; min-width:46px !important; height:46px !important;
+  border-radius:12px !important; background:#EFF6FF !important;
+  color:#1D4ED8 !important; border:1px solid #BFDBFE !important;
+  display:flex !important; align-items:center !important; justify-content:center !important;
+}
+[class*="st-key-entrar_admin"] button:hover {background:#DBEAFE !important; border-color:#93C5FD !important;}
+[class*="st-key-entrar_admin"] {display:flex;justify-content:flex-end;}
 [data-testid="stDataFrame"] {border-radius:10px; overflow:hidden;}
 [data-testid="stPlotlyChart"] {border-radius:10px;}
 section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bottom:.05rem;}
@@ -664,17 +672,16 @@ if "bloqueio_ate" not in st.session_state:
     st.session_state.bloqueio_ate = 0.0
 
 
-def senha_admin():
+def credenciais_admin():
+    """Credenciais configuradas fora do repositório público (Streamlit Secrets)."""
+    usuario = os.environ.get("ADMIN_USER", "")
     senha = os.environ.get("ADMIN_PASSWORD", "")
-    if senha:
-        return senha
     try:
-        senha_secret = st.secrets.get("ADMIN_PASSWORD", "")
-        if senha_secret:
-            return senha_secret
+        usuario = usuario or st.secrets.get("ADMIN_USER", "")
+        senha = senha or st.secrets.get("ADMIN_PASSWORD", "")
     except (FileNotFoundError, KeyError):
         pass
-    return "1234"
+    return str(usuario).strip(), str(senha)
 
 
 def cabecalho_publico():
@@ -684,7 +691,8 @@ def cabecalho_publico():
     with esquerda:
         st.markdown(marca(), unsafe_allow_html=True)
     with direita:
-        if st.button("Administração", key="entrar_admin", use_container_width=True):
+        if st.button(" ", icon=":material/person:", help="Acesso administrativo",
+                     key="entrar_admin", use_container_width=False):
             st.session_state.pagina = "login" if not st.session_state.autenticado else "admin"
             st.rerun()
     st.divider()
@@ -699,16 +707,20 @@ def tela_login():
     with meio:
         with st.container(border=True):
             st.subheader("Acesso administrativo")
-            senha_config = senha_admin()
+            usuario_config, senha_config = credenciais_admin()
+            if not usuario_config or not senha_config:
+                st.error("Configure ADMIN_USER e ADMIN_PASSWORD nos Secrets do Streamlit para habilitar o login.")
             restante = max(0, int(st.session_state.bloqueio_ate - time.monotonic()))
             if restante:
                 st.warning(f"Tente novamente em {restante} segundos.")
             with st.form("login_admin"):
+                usuario_informado = st.text_input("Usuário", autocomplete="username")
                 senha_informada = st.text_input("Senha", type="password", autocomplete="current-password")
                 enviar = st.form_submit_button("Entrar", type="primary", use_container_width=True,
-                                               disabled=restante > 0)
+                                               disabled=restante > 0 or not (usuario_config and senha_config))
             if enviar:
-                if hmac.compare_digest(senha_informada, senha_config):
+                if (hmac.compare_digest(usuario_informado.strip(), usuario_config)
+                        and hmac.compare_digest(senha_informada, senha_config)):
                     st.session_state.autenticado = True
                     st.session_state.pagina = "admin"
                     st.session_state.falhas_login = 0
@@ -734,7 +746,6 @@ def painel_publico():
     faixas = db.buscar_faixas_iqa()
 
     cabecalho_publico()
-    st.markdown('<div class="eyebrow">Monitoramento ambiental · Campus Florianópolis</div>', unsafe_allow_html=True)
     st.title("Qualidade da água nos córregos da UFSC")
     st.markdown('<div class="lead">Veja o mapa dos pontos, acompanhe o IQA e compare campanhas, parâmetros e locais de coleta.</div>', unsafe_allow_html=True)
     st.write("")
