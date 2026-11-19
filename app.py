@@ -1,7 +1,7 @@
 """Portal público + administração de qualidade da água — UFSC.
 
 Iniciar: streamlit run app.py
-Senha administrativa padrão: 1234
+Credenciais administrativas definidas nas Secrets do Streamlit
 """
 from __future__ import annotations
 
@@ -1556,6 +1556,20 @@ def painel_admin():
         admin_parametros(parametros)
     elif menu == opcoes[4]:
         admin_iqa(faixas, config, parametros)
+
+
+# Inicialize a sessão antes de acessar suas propriedades. No Streamlit,
+# cada navegador/sessão começa com um estado independente.
+VALORES_INICIAIS_SESSAO = {
+    "pagina": "publico",
+    "autenticado": False,
+    "admin_menu": "Visão geral",
+    "falhas_login": 0,
+    "bloqueio_ate": 0.0,
+}
+for chave, padrao in VALORES_INICIAIS_SESSAO.items():
+    if chave not in st.session_state:
+        st.session_state[chave] = padrao
 
 
 # Proteção de rota: jamais renderizar a administração sem autenticação.
