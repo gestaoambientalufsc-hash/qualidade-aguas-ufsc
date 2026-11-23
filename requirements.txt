@@ -4,3 +4,4 @@ plotly>=5.22,<7
 folium>=0.17,<1
 streamlit-folium>=0.24,<1
 pyproj>=3.6,<4
+xlsxwriter>=3.2,<4
