@@ -916,34 +916,39 @@ def painel_publico():
         outros_parametros["id"].isin(todas_medicoes["param_id"].dropna().astype(int))
     ]["id"].astype(int).tolist() if not todas_medicoes.empty else []
 
-    # 1 — Um parâmetro, várias séries temporais (pontos selecionados).
+    # 1 — Evolução temporal de um único ponto para o parâmetro escolhido.
     st.write("")
     with st.container(border=True):
-        titulo_secao("Comparativo de parâmetros entre pontos")
+        titulo_secao("Evolução dos parâmetros por ponto")
         if ids_parametros:
-            if st.session_state.get("parametro_temporal_comparado") not in ids_parametros:
-                st.session_state.parametro_temporal_comparado = ids_parametros[0]
-            parametro_comp = st.selectbox(
-                "Parâmetro", ids_parametros,
-                format_func=lambda pid: outros_parametros.loc[outros_parametros["id"] == pid, "nome"].iloc[0],
-                key="parametro_temporal_comparado")
-            ids_disponiveis = [int(pid) for pid in ids if int(pid) in set(
-                todas_medicoes.loc[todas_medicoes["param_id"] == parametro_comp, "ponto_id"].astype(int))]
-            atuais = st.session_state.get("pontos_parametros_comparados", [])
-            if any(int(x) not in ids_disponiveis for x in atuais):
-                st.session_state.pontos_parametros_comparados = [int(x) for x in atuais if int(x) in ids_disponiveis]
-            default = ids_disponiveis[:min(3, len(ids_disponiveis))]
-            comparar_param = st.multiselect(
-                "Pontos para comparar", ids_disponiveis,
-                default=default if "pontos_parametros_comparados" not in st.session_state else None,
-                format_func=lambda pid: nomes_pontos[pid],
-                key="pontos_parametros_comparados", max_selections=6,
-                placeholder="Selecione os pontos")
-            if comparar_param:
-                grafico_temporal_parametros_multiplos(
-                    resultados, parametro_comp, comparar_param, pontos, parametros)
+            filtro_param, filtro_ponto = st.columns([1.2, 1.8])
+            with filtro_param:
+                if st.session_state.get("parametro_temporal_individual") not in ids_parametros:
+                    st.session_state.parametro_temporal_individual = ids_parametros[0]
+                parametro_individual = st.selectbox(
+                    "Parâmetro", ids_parametros,
+                    format_func=lambda pid: outros_parametros.loc[
+                        outros_parametros["id"] == pid, "nome"].iloc[0],
+                    key="parametro_temporal_individual")
+            pontos_disponiveis = set(todas_medicoes.loc[
+                todas_medicoes["param_id"] == parametro_individual, "ponto_id"].dropna().astype(int))
+            ids_disponiveis = [int(pid) for pid in ids if int(pid) in pontos_disponiveis]
+            with filtro_ponto:
+                if ids_disponiveis:
+                    if st.session_state.get("ponto_parametro_individual") not in ids_disponiveis:
+                        st.session_state.ponto_parametro_individual = ids_disponiveis[0]
+                    ponto_individual = st.selectbox(
+                        "Ponto de coleta", ids_disponiveis,
+                        format_func=lambda pid: nomes_pontos[pid],
+                        key="ponto_parametro_individual")
+            if ids_disponiveis:
+                parametro_config = parametros.loc[parametros["id"] == parametro_individual].iloc[0]
+                serie = todas_medicoes[
+                    (todas_medicoes["param_id"] == parametro_individual) &
+                    (todas_medicoes["ponto_id"] == ponto_individual)]
+                grafico_temporal(serie, parametro_config["nome"], parametro_config)
             else:
-                st.info("Selecione pelo menos um ponto.")
+                st.info("Não há medições para esse parâmetro.")
         else:
             st.info("Ainda não há resultados de parâmetros.")
 
@@ -987,23 +992,40 @@ def painel_publico():
         else:
             st.info("Ainda não há resultados de IQA para comparação.")
 
-    # 4 — Todos os pontos com o parâmetro escolhido, na campanha indicada no topo.
+    # 4 — Evolução temporal do mesmo parâmetro entre diversos pontos.
+    # Cada série contém apenas suas próprias datas de coleta; não inventar valores ausentes.
     st.write("")
     with st.container(border=True):
-        titulo_secao("Comparativo geral de pontos por parâmetro")
-        params_camp = campanha_df[~campanha_df["parametro"].apply(somente_iqa)] if not campanha_df.empty else campanha_df
-        ids_camp = params_camp["param_id"].dropna().astype(int).drop_duplicates().tolist()
-        if ids_camp:
-            if st.session_state.get("parametro_campanha_publico") not in ids_camp:
-                st.session_state.parametro_campanha_publico = ids_camp[0]
-            st.selectbox(
-                "Parâmetro da campanha", ids_camp,
-                format_func=lambda pid: parametros.loc[parametros["id"] == pid, "nome"].iloc[0],
-                key="parametro_campanha_publico")
-            grafico_comparacao_parametro(
-                campanha_df, st.session_state.parametro_campanha_publico, parametros, pontos)
+        titulo_secao("Comparativo de parâmetros entre pontos")
+        if ids_parametros:
+            if st.session_state.get("parametro_temporal_comparado") not in ids_parametros:
+                st.session_state.parametro_temporal_comparado = ids_parametros[0]
+            parametro_comp = st.selectbox(
+                "Parâmetro", ids_parametros,
+                format_func=lambda pid: outros_parametros.loc[
+                    outros_parametros["id"] == pid, "nome"].iloc[0],
+                key="parametro_temporal_comparado")
+            ids_presentes = set(todas_medicoes.loc[
+                todas_medicoes["param_id"] == parametro_comp, "ponto_id"].dropna().astype(int))
+            ids_disponiveis = [int(pid) for pid in ids if int(pid) in ids_presentes]
+            atuais = st.session_state.get("pontos_parametros_comparados", [])
+            if any(int(x) not in ids_disponiveis for x in atuais):
+                st.session_state.pontos_parametros_comparados = [
+                    int(x) for x in atuais if int(x) in ids_disponiveis]
+            default = ids_disponiveis[:min(3, len(ids_disponiveis))]
+            comparar_param = st.multiselect(
+                "Pontos para comparar", ids_disponiveis,
+                default=default if "pontos_parametros_comparados" not in st.session_state else None,
+                format_func=lambda pid: nomes_pontos[pid],
+                key="pontos_parametros_comparados", max_selections=6,
+                placeholder="Selecione os pontos")
+            if comparar_param:
+                grafico_temporal_parametros_multiplos(
+                    resultados, parametro_comp, comparar_param, pontos, parametros)
+            else:
+                st.info("Selecione pelo menos um ponto.")
         else:
-            st.info("A campanha selecionada não possui resultados de parâmetros.")
+            st.info("Ainda não há resultados de parâmetros.")
 
     if not resultados.empty:
         exportar = resultados[resultados["ponto_id"] == st.session_state.get("ponto_iqa_individual", st.session_state.ponto_publico)].copy()
