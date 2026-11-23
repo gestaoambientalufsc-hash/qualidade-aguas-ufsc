@@ -477,6 +477,27 @@ def grafico_temporal(dados, parametro, config_param):
 
 
 
+# Cores com maior saturação para as faixas do IQA.
+# Os intervalos/limites vêm do banco; apenas a aparência é definida aqui.
+IQA_CORES = {
+    "Péssima": "#DC2626", "Ruim": "#EA580C", "Regular": "#D97706",
+    "Boa": "#16A34A", "Ótima": "#047857",
+}
+IQA_FUNDOS = {
+    "Péssima": "rgba(220,38,38,0.16)", "Ruim": "rgba(234,88,12,0.13)",
+    "Regular": "rgba(245,158,11,0.15)", "Boa": "rgba(34,197,94,0.13)",
+    "Ótima": "rgba(5,150,105,0.16)",
+}
+
+
+def cor_iqa(faixa):
+    return IQA_CORES.get(str(faixa["nome"]), str(faixa["cor_texto"]))
+
+
+def fundo_iqa(faixa):
+    return IQA_FUNDOS.get(str(faixa["nome"]), str(faixa["cor_grafico"]))
+
+
 def grafico_iqa(dados, faixas):
     if dados.empty:
         st.info("Ainda não há medições de IQA informadas para este ponto.")
@@ -488,12 +509,12 @@ def grafico_iqa(dados, faixas):
     cores, categorias = [], []
     for valor in dados["valor"]:
         faixa = classificar_iqa(valor, faixas)
-        cores.append(str(faixa["cor_texto"]) if faixa is not None else "#64748B")
+        cores.append(cor_iqa(faixa) if faixa is not None else "#64748B")
         categorias.append(str(faixa["nome"]) if faixa is not None else "Indefinida")
     fig = go.Figure()
     for _, fx in faixas.iterrows():
         fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
-                      fillcolor=fx["cor_grafico"], opacity=1,
+                      fillcolor=fundo_iqa(fx), opacity=1,
                       layer="below", line_width=0)
     fig.add_trace(go.Scatter(
         x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers+text",
@@ -511,7 +532,7 @@ def grafico_iqa(dados, faixas):
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     itens = "".join(
         f'<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
-        f'<span style="width:9px;height:9px;background:{txt(fx.cor_texto)};'
+        f'<span style="width:9px;height:9px;background:{txt(IQA_CORES.get(fx.nome, fx.cor_texto))};'
         f'border-radius:50%;display:inline-block"></span>{txt(fx.nome)}</span>'
         for fx in faixas.sort_values("valor_min").itertuples()
     )
@@ -547,7 +568,7 @@ def obter_iqa_por_ponto(campanha_df, faixas):
     for valor in resumo["valor"]:
         fx = classificar_iqa(valor, faixas)
         classes.append(str(fx["nome"]) if fx is not None else "Sem classificação")
-        cores.append(str(fx["cor_texto"]) if fx is not None else "#94A3B8")
+        cores.append(cor_iqa(fx) if fx is not None else "#94A3B8")
     resumo["classificacao"] = classes
     resumo["cor"] = cores
     return resumo
@@ -604,10 +625,10 @@ def grafico_distribuicao_iqa(campanha_df, faixas):
         proporcao = 100 * qtd / total
         st.markdown(
             f'<div style="display:flex;align-items:center;gap:9px;margin:8px 0;">'
-            f'<span style="width:10px;height:10px;flex-shrink:0;border-radius:50%;background:{txt(fx["cor_texto"])}"></span>'
+            f'<span style="width:10px;height:10px;flex-shrink:0;border-radius:50%;background:{txt(cor_iqa(fx))}"></span>'
             f'<span style="font-size:12px;color:#334155;min-width:66px">{txt(fx["nome"])}</span>'
             f'<span style="flex:1;height:7px;background:#EFF3F8;border-radius:8px;overflow:hidden">'
-            f'<span style="display:block;background:{txt(fx["cor_texto"])};height:100%;width:{proporcao:.2f}%;border-radius:8px"></span></span>'
+            f'<span style="display:block;background:{txt(cor_iqa(fx))};height:100%;width:{proporcao:.2f}%;border-radius:8px"></span></span>'
             f'<strong style="font-size:12px;color:#17324D">{qtd}</strong></div>',
             unsafe_allow_html=True)
 
@@ -700,13 +721,57 @@ def grafico_comparacao_iqa_multiplos(resultados, ponto_ids, pontos, faixas, foco
         ))
     for _, fx in faixas.iterrows():
         fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
-                      fillcolor=fx["cor_grafico"], opacity=1, layer="below", line_width=0)
+                      fillcolor=fundo_iqa(fx), opacity=1, layer="below", line_width=0)
     _layout_eixo_coletas(fig, datas, altura=350, eixo_y="IQA (0–100)")
     fig.update_yaxes(range=[0, 104])
     fig.update_layout(legend=dict(orientation="h", y=1.13, x=0),
                       showlegend=len(selecionados) > 1)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
+
+
+def grafico_temporal_parametros_multiplos(resultados, parametro_id, ponto_ids, pontos, parametros):
+    """Mesmo parâmetro ao longo das campanhas, até seis pontos em tons de azul."""
+    base = resultados[(resultados["param_id"] == int(parametro_id)) &
+                      (resultados["ponto_id"].isin(ponto_ids))].copy()
+    if base.empty:
+        st.info("Não há medições para os pontos escolhidos.")
+        return
+    base = (base.groupby(["ponto_id", "dia", "data_rotulo"], as_index=False)
+                  .agg(valor=("valor", "mean"))).sort_values("dia")
+    datas = base["data_rotulo"].drop_duplicates().tolist()
+    rotulos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
+    cor_linhas = ["#1D4ED8", "#0284C7", "#4338CA", "#0891B2", "#2563EB", "#64748B"]
+    fig = go.Figure()
+    for ordem, pid in enumerate(ponto_ids):
+        serie = base[base["ponto_id"] == int(pid)]
+        if serie.empty:
+            continue
+        cor = cor_linhas[ordem % len(cor_linhas)]
+        exibir_valores = len(base) <= 15
+        fig.add_trace(go.Scatter(
+            x=serie["data_rotulo"], y=serie["valor"],
+            mode="lines+markers+text" if exibir_valores else "lines+markers",
+            name=rotulos.get(int(pid), str(pid)),
+            line=dict(color=cor, width=2),
+            marker=dict(color=cor, size=9, line=dict(color="white", width=1.5)),
+            text=[formatar_valor(v) for v in serie["valor"]] if exibir_valores else None,
+            textposition="top center", textfont=dict(color=cor, size=11),
+            cliponaxis=False,
+            hovertemplate="%{fullData.name}<br>%{x}<br><b>%{y:.5f}</b><extra></extra>",
+        ))
+    unidade = str(parametros.loc[parametros["id"] == int(parametro_id), "unidade"].iloc[0])
+    if unidade == "-":
+        unidade = ""
+    _layout_eixo_coletas(fig, datas, altura=355, eixo_y=unidade)
+    valores = base["valor"].astype(float)
+    vmin, vmax = float(valores.min()), float(valores.max())
+    folga = max((vmax-vmin)*0.15, abs(vmax)*0.09, 0.3)
+    fig.update_yaxes(range=[min(0, vmin-folga) if vmin >= 0 else vmin-folga, vmax+folga*1.5])
+    fig.update_layout(showlegend=True,
+                      legend=dict(orientation="h", y=1.18, x=0),
+                      margin=dict(l=14, r=35, t=45, b=38))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
 def credenciais_admin():
@@ -844,96 +909,104 @@ def painel_publico():
             grafico_distribuicao_iqa(campanha_df, faixas)
             st.caption("Cores dos pontos no mapa: classificação do IQA; cinza significa sem IQA na data.")
 
-    st.write("")
-    with st.container(border=True):
-        titulo_secao("Comparação entre pontos", "Escolha um parâmetro e compare os locais que tiveram medição na campanha selecionada.")
-        params_camp = campanha_df[~campanha_df["parametro"].apply(somente_iqa)] if not campanha_df.empty else campanha_df
-        param_ids = params_camp["param_id"].dropna().astype(int).drop_duplicates().tolist()
-        if param_ids:
-            if st.session_state.get("parametro_campanha_publico") not in param_ids:
-                st.session_state.parametro_campanha_publico = param_ids[0]
-            st.selectbox("Parâmetro da campanha", param_ids,
-                         format_func=lambda pid: parametros.loc[parametros["id"] == pid, "nome"].iloc[0],
-                         key="parametro_campanha_publico")
-            grafico_comparacao_parametro(campanha_df, st.session_state.parametro_campanha_publico, parametros, pontos)
-        else:
-            st.info("A campanha selecionada ainda não possui parâmetros comparáveis entre pontos.")
+    nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
+    outros_parametros = parametros[~parametros["nome"].apply(somente_iqa)]
+    todas_medicoes = resultados[~resultados["parametro"].apply(somente_iqa)].copy()
+    ids_parametros = outros_parametros[
+        outros_parametros["id"].isin(todas_medicoes["param_id"].dropna().astype(int))
+    ]["id"].astype(int).tolist() if not todas_medicoes.empty else []
 
+    # 1 — Um parâmetro, várias séries temporais (pontos selecionados).
     st.write("")
     with st.container(border=True):
-        titulo_secao("Comparação temporal do IQA", "Compare a trajetória de até 6 pontos ao longo das campanhas.")
-        iqa_base = resultados[resultados["parametro"].astype(str).str.startswith("IQA (", na=False)].copy()
-        ids_iqa = iqa_base["ponto_id"].dropna().astype(int).drop_duplicates().tolist()
-        nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
-        default_points = [st.session_state.ponto_publico] if st.session_state.ponto_publico in ids_iqa else ids_iqa[:1]
-        for pid in ids_iqa:
-            if len(default_points) >= min(4, len(ids_iqa)):
-                break
-            if pid not in default_points:
-                default_points.append(pid)
-        comparar = st.multiselect("Pontos para comparar", options=ids_iqa, default=default_points,
-                                  format_func=lambda pid: nomes_pontos.get(pid, str(pid)), max_selections=6,
-                                  key="comparar_iqa_publico", placeholder="Selecione os pontos")
-        if comparar:
-            grafico_comparacao_iqa_multiplos(resultados, comparar, pontos, faixas, foco_id=st.session_state.ponto_publico)
-        else:
-            st.info("Selecione ao menos um ponto para comparar o IQA.")
-
-    st.write("")
-    with st.container(border=True):
-        titulo_secao("Evolução dos parâmetros por ponto")
-        col_ponto, col_param = st.columns([1.2, 1.4])
-        nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
-        with col_ponto:
-            st.selectbox("Ponto de coleta", ids, format_func=lambda pid: nomes_pontos[pid], key="ponto_publico")
-        ponto_id = st.session_state.ponto_publico
-        dados_pt = resultados[resultados["ponto_id"] == ponto_id].copy()
-        outros = parametros[~parametros["nome"].apply(somente_iqa)]
-        ids_marcados = set(dados_pt["param_id"].dropna().astype(int)) if not dados_pt.empty else set()
-        disponiveis = outros[outros["id"].isin(ids_marcados)]
-        param_ids = disponiveis["id"].astype(int).tolist()
-        with col_param:
-            if param_ids:
-                if st.session_state.get("parametro_publico") not in param_ids:
-                    st.session_state.parametro_publico = param_ids[0]
-                st.selectbox("Parâmetro", param_ids,
-                             format_func=lambda pid: disponiveis.loc[disponiveis["id"] == pid, "nome"].iloc[0],
-                             key="parametro_publico")
+        titulo_secao("Comparativo de parâmetros entre pontos")
+        if ids_parametros:
+            if st.session_state.get("parametro_temporal_comparado") not in ids_parametros:
+                st.session_state.parametro_temporal_comparado = ids_parametros[0]
+            parametro_comp = st.selectbox(
+                "Parâmetro", ids_parametros,
+                format_func=lambda pid: outros_parametros.loc[outros_parametros["id"] == pid, "nome"].iloc[0],
+                key="parametro_temporal_comparado")
+            ids_disponiveis = [int(pid) for pid in ids if int(pid) in set(
+                todas_medicoes.loc[todas_medicoes["param_id"] == parametro_comp, "ponto_id"].astype(int))]
+            atuais = st.session_state.get("pontos_parametros_comparados", [])
+            if any(int(x) not in ids_disponiveis for x in atuais):
+                st.session_state.pontos_parametros_comparados = [int(x) for x in atuais if int(x) in ids_disponiveis]
+            default = ids_disponiveis[:min(3, len(ids_disponiveis))]
+            comparar_param = st.multiselect(
+                "Pontos para comparar", ids_disponiveis,
+                default=default if "pontos_parametros_comparados" not in st.session_state else None,
+                format_func=lambda pid: nomes_pontos[pid],
+                key="pontos_parametros_comparados", max_selections=6,
+                placeholder="Selecione os pontos")
+            if comparar_param:
+                grafico_temporal_parametros_multiplos(
+                    resultados, parametro_comp, comparar_param, pontos, parametros)
             else:
-                st.selectbox("Parâmetro", ["Sem medições"], disabled=True, key="parametro_sem_medicoes")
-        if param_ids:
-            param = disponiveis.loc[disponiveis["id"] == st.session_state.parametro_publico].iloc[0]
-            serie = dados_pt[dados_pt["param_id"] == st.session_state.parametro_publico]
-            grafico_temporal(serie, param["nome"], param)
+                st.info("Selecione pelo menos um ponto.")
         else:
-            st.info("Nenhum resultado de parâmetro para este ponto.")
+            st.info("Ainda não há resultados de parâmetros.")
 
+    # 2 — IQA de um único ponto.
     st.write("")
     with st.container(border=True):
         titulo_secao("Evolução do IQA por ponto")
-        # Filtro independente: comparar o IQA não altera o ponto escolhido no gráfico de parâmetros.
         ids_com_iqa = resultados.loc[
             resultados["parametro"].astype(str).str.startswith("IQA (", na=False), "ponto_id"
         ].dropna().astype(int).drop_duplicates().tolist()
         ids_com_iqa = [pid for pid in ids if pid in ids_com_iqa]
         if ids_com_iqa:
             if st.session_state.get("ponto_iqa_individual") not in ids_com_iqa:
-                st.session_state.ponto_iqa_individual = (
-                    st.session_state.ponto_publico if st.session_state.ponto_publico in ids_com_iqa
-                    else ids_com_iqa[0]
-                )
-            st.selectbox("Ponto para visualizar o IQA", ids_com_iqa,
+                st.session_state.ponto_iqa_individual = ids_com_iqa[0]
+            st.selectbox("Ponto de coleta", ids_com_iqa,
                          format_func=lambda pid: nomes_pontos[pid], key="ponto_iqa_individual")
             dados_iqa_ponto = resultados[resultados["ponto_id"] == st.session_state.ponto_iqa_individual]
-            serie_iqa = dados_iqa_ponto[
-                dados_iqa_ponto["parametro"].astype(str).str.startswith("IQA (", na=False)
-            ]
-            grafico_iqa(serie_iqa, faixas)
+            grafico_iqa(dados_iqa_ponto[dados_iqa_ponto["parametro"].apply(somente_iqa)], faixas)
         else:
             st.info("Ainda não existem valores de IQA registrados para os pontos.")
 
+    # 3 — Comparação do IQA de vários pontos ao longo do tempo.
+    st.write("")
+    with st.container(border=True):
+        titulo_secao("Comparação temporal do IQA")
+        if ids_com_iqa:
+            selecionados_atuais = st.session_state.get("comparar_iqa_publico", [])
+            if any(int(x) not in ids_com_iqa for x in selecionados_atuais):
+                st.session_state.comparar_iqa_publico = [int(x) for x in selecionados_atuais if int(x) in ids_com_iqa]
+            default_iqa = ids_com_iqa[:min(3, len(ids_com_iqa))]
+            comparar = st.multiselect(
+                "Pontos para comparar", options=ids_com_iqa,
+                default=default_iqa if "comparar_iqa_publico" not in st.session_state else None,
+                format_func=lambda pid: nomes_pontos.get(pid, str(pid)), max_selections=6,
+                key="comparar_iqa_publico", placeholder="Selecione os pontos")
+            if comparar:
+                grafico_comparacao_iqa_multiplos(resultados, comparar, pontos, faixas,
+                                                 foco_id=st.session_state.get("ponto_publico"))
+            else:
+                st.info("Selecione ao menos um ponto para comparar o IQA.")
+        else:
+            st.info("Ainda não há resultados de IQA para comparação.")
+
+    # 4 — Todos os pontos com o parâmetro escolhido, na campanha indicada no topo.
+    st.write("")
+    with st.container(border=True):
+        titulo_secao("Comparativo geral de pontos por parâmetro")
+        params_camp = campanha_df[~campanha_df["parametro"].apply(somente_iqa)] if not campanha_df.empty else campanha_df
+        ids_camp = params_camp["param_id"].dropna().astype(int).drop_duplicates().tolist()
+        if ids_camp:
+            if st.session_state.get("parametro_campanha_publico") not in ids_camp:
+                st.session_state.parametro_campanha_publico = ids_camp[0]
+            st.selectbox(
+                "Parâmetro da campanha", ids_camp,
+                format_func=lambda pid: parametros.loc[parametros["id"] == pid, "nome"].iloc[0],
+                key="parametro_campanha_publico")
+            grafico_comparacao_parametro(
+                campanha_df, st.session_state.parametro_campanha_publico, parametros, pontos)
+        else:
+            st.info("A campanha selecionada não possui resultados de parâmetros.")
+
     if not resultados.empty:
-        exportar = resultados[resultados["ponto_id"] == st.session_state.ponto_publico].copy()
+        exportar = resultados[resultados["ponto_id"] == st.session_state.get("ponto_iqa_individual", st.session_state.ponto_publico)].copy()
         st.download_button("Baixar histórico do ponto (CSV)",
                            exportar.to_csv(index=False, sep=";").encode("utf-8-sig"),
                            "historico_aguas_ufsc.csv", "text/csv", type="secondary")
