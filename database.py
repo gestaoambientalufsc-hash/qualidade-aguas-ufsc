@@ -401,32 +401,6 @@ def _data_iso(dia):
         raise ValueError("Data da amostra inválida.") from exc
 
 
-def atualizar_data_amostra(amostra_id, nova_data):
-    """Altera somente a data de uma amostra e sincroniza suas medições vinculadas.
-
-    Os valores, parâmetros, IQA e IDs dos registros são preservados.
-    """
-    dia = _data_iso(nova_data)
-    if dia > date.today().isoformat():
-        raise ValueError("A data da coleta não pode estar no futuro.")
-
-    with conexao() as con:
-        amostra = con.execute(
-            "SELECT id FROM amostras WHERE id=?", (int(amostra_id),)
-        ).fetchone()
-        if amostra is None:
-            raise ValueError("A coleta selecionada não existe.")
-
-        con.execute(
-            "UPDATE amostras SET data_amostra=? WHERE id=?",
-            (dia, int(amostra_id)),
-        )
-        con.execute(
-            "UPDATE coletas SET data_amostra=? WHERE amostra_id=?",
-            (dia, int(amostra_id)),
-        )
-
-
 def _validar_valores(valores):
     saida = {}
     for param_id, valor in valores.items():
@@ -470,6 +444,41 @@ def salvar_amostra(ponto_id, data_amostra, valores, identificador="", observacoe
         con.executemany("""INSERT INTO coletas(amostra_id,ponto_id,parametro_id,data_amostra,valor)
             VALUES (?,?,?,?,?)""", [(id_, int(ponto_id), p, dia, val) for p, val in numeros.items()])
         return id_
+
+
+def atualizar_data_amostra(amostra_id, nova_data):
+    """Atualiza a data de uma amostra e de todas as medições vinculadas, sem alterar valores."""
+    dia = _data_iso(nova_data)
+    if dia > date.today().isoformat():
+        raise ValueError("A data da coleta não pode estar no futuro.")
+
+    with conexao() as con:
+        amostra = con.execute(
+            "SELECT id, ponto_id FROM amostras WHERE id=?",
+            (int(amostra_id),),
+        ).fetchone()
+        if amostra is None:
+            raise ValueError("A coleta selecionada não existe.")
+
+        duplicadas = con.execute(
+            """SELECT COUNT(*) FROM amostras
+               WHERE ponto_id=? AND data_amostra=? AND id!=?""",
+            (int(amostra["ponto_id"]), dia, int(amostra_id)),
+        ).fetchone()[0]
+        if duplicadas:
+            raise ValueError(
+                "Já existe outra coleta para esse ponto na data informada. "
+                "Escolha outra data para evitar juntar registros diferentes."
+            )
+
+        con.execute(
+            "UPDATE amostras SET data_amostra=? WHERE id=?",
+            (dia, int(amostra_id)),
+        )
+        con.execute(
+            "UPDATE coletas SET data_amostra=? WHERE amostra_id=?",
+            (dia, int(amostra_id)),
+        )
 
 
 def salvar_iqa_amostra(amostra_id, novo_valor):
