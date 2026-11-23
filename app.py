@@ -907,6 +907,36 @@ def grafico_temporal_parametros_multiplos(resultados, parametro_id, ponto_ids, p
                    "deslocados visualmente. As curvas mantêm os valores reais.")
 
 
+def buscar_titulo_referencia_seguro():
+    """Compatível com versões anteriores do database.py; somente leitura."""
+    funcao = getattr(db, "buscar_titulo_referencia", None)
+    if callable(funcao):
+        return funcao()
+    configuracoes = db.buscar_configuracao_iqa()
+    return configuracoes.get(
+        "titulo_referencia_ambiental",
+        "Resolução CONAMA 357/2005 - águas doces classe 2",
+    )
+
+
+def salvar_titulo_referencia_seguro(titulo):
+    """Grava só a configuração da norma, sem alterar coletas, pontos ou IQA."""
+    funcao = getattr(db, "salvar_titulo_referencia", None)
+    if callable(funcao):
+        return funcao(titulo)
+    titulo = str(titulo).strip()
+    if not titulo or len(titulo) > 250:
+        raise ValueError("Informe um título de referência de até 250 caracteres.")
+    # Compatibilidade com a versão anterior de database.py: atualiza somente
+    # uma chave da tabela 'configuracoes', que já existe no esquema original.
+    with db.conexao() as con:
+        con.execute(
+            "INSERT INTO configuracoes(chave, valor) VALUES (?, ?) "
+            "ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor",
+            ("titulo_referencia_ambiental", titulo),
+        )
+
+
 def credenciais_admin():
     """Lê as credenciais dos Streamlit Secrets, sem expor senha no repositório."""
     usuario = senha = ""
@@ -1126,7 +1156,7 @@ def exibir_resumo_analises_ponto(campanha_df, pontos, faixas, data_campanha):
         else:
             amostra_id = ids_amostras[0]
         dados_amostra = med[med["amostra_id"] == amostra_id]
-        titulo = db.buscar_titulo_referencia()
+        titulo = buscar_titulo_referencia_seguro()
         st.caption(f"**Referência informada:** {titulo}")
         catalogo = db.buscar_parametros()  # inclui arquivados para preservar histórico
         linhas = montar_resumo_ponto(dados_amostra, catalogo, faixas)
@@ -2084,12 +2114,12 @@ def admin_parametros(parametros):
         st.caption("Este título identifica a norma nos resumos e nas exportações. "
                    "Os limites de cada parâmetro continuam sendo configurados e validados individualmente.")
         with st.form("form_titulo_referencia_normativa"):
-            titulo_atual = db.buscar_titulo_referencia()
+            titulo_atual = buscar_titulo_referencia_seguro()
             titulo_novo = st.text_input("Referência para os relatórios", value=titulo_atual,
                                        max_chars=250)
             if st.form_submit_button("Salvar título da referência", type="primary"):
                 try:
-                    db.salvar_titulo_referencia(titulo_novo)
+                    salvar_titulo_referencia_seguro(titulo_novo)
                     st.success("Título salvo com sucesso.")
                 except ValueError as exc:
                     st.error(str(exc))
