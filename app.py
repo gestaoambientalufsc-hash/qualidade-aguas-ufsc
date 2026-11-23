@@ -569,7 +569,8 @@ def grafico_iqa(dados, faixas):
     itens = "".join(
         f'<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
         f'<span style="width:9px;height:9px;background:{txt(IQA_CORES.get(fx.nome, fx.cor_texto))};'
-        f'border-radius:50%;display:inline-block"></span>{txt(fx.nome)}</span>'
+        f'border-radius:50%;display:inline-block"></span>'
+        f'{txt(fx.nome)} ({txt(formatar_valor(fx.valor_min))}–{txt(formatar_valor(fx.valor_max))})</span>'
         for fx in faixas.sort_values("valor_min").itertuples()
     )
     st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:12px;'
@@ -722,6 +723,66 @@ def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
 
 
 
+def _anotacoes_series_sem_colisao(fig, dados, codigos, *, eixo_iqa=False, limite_rotulos=22):
+    """Rotula pontos coincidentes/adjacentes sem modificar as medições reais.
+
+    Todas as curvas mantêm suas coordenadas originais: somente os rótulos são
+    deslocados em pixels, com uma linha-guia até o marcador correspondente.
+    """
+    if dados.empty:
+        return False
+    usados = dados[["ponto_id", "data_rotulo", "valor"]].copy()
+    usados["valor"] = usados["valor"].astype(float)
+    minimo, maximo = float(usados["valor"].min()), float(usados["valor"].max())
+    amplitude = max(100.0 if eixo_iqa else maximo - minimo, 1.0)
+    proximidade = amplitude * (0.042 if eixo_iqa else 0.045)
+    # Com muitas amostras evita poluir o gráfico: rotula apenas as colisões.
+    rotular_todos = len(usados) <= limite_rotulos
+    colisoes = False
+    for data_rotulo, grupo in usados.groupby("data_rotulo", sort=False):
+        ordenadas = grupo.sort_values(["valor", "ponto_id"]).to_dict("records")
+        conjuntos = []
+        atual = []
+        for registro in ordenadas:
+            if atual and registro["valor"] - atual[-1]["valor"] > proximidade:
+                conjuntos.append(atual)
+                atual = []
+            atual.append(registro)
+        if atual:
+            conjuntos.append(atual)
+        for conjunto in conjuntos:
+            colisao = len(conjunto) > 1
+            colisoes = colisoes or colisao
+            if not rotular_todos and not colisao:
+                continue
+            for indice, item in enumerate(conjunto):
+                codigo = codigos.get(int(item["ponto_id"]), str(item["ponto_id"]))
+                # Para valores sobrepostos, identificar a série no próprio rótulo.
+                legenda = (f"{codigo}: {formatar_valor(item['valor'])}" if colisao
+                           else formatar_valor(item["valor"]))
+                # Cada valor recebe seu próprio rótulo, afastado em posições
+                # alternadas; o marcador e a linha continuam em dados exatos.
+                if colisao:
+                    lado = 1 if indice % 2 == 0 else -1
+                    nivel = indice // 2
+                    xshift = lado * (50 + 12 * (nivel % 2))
+                    yshift = 26 + nivel * 25
+                else:
+                    xshift, yshift = 0, 17
+                fig.add_annotation(
+                    x=data_rotulo, y=float(item["valor"]), text=legenda,
+                    xref="x", yref="y", xshift=0 if colisao else xshift,
+                    yshift=0 if colisao else yshift,
+                    showarrow=colisao, arrowhead=0, arrowsize=0.7,
+                    arrowwidth=1, arrowcolor="#94A3B8",
+                    ax=xshift if colisao else 0, ay=-yshift if colisao else 0,
+                    font=dict(size=10, color="#334155"),
+                    bgcolor="rgba(255,255,255,0.90)" if colisao else "rgba(255,255,255,0)",
+                    borderpad=2,
+                )
+    return colisoes
+
+
 def grafico_comparacao_iqa_multiplos(resultados, ponto_ids, pontos, faixas, foco_id=None):
     dados = resultados[resultados["parametro"].astype(str).str.startswith("IQA (", na=False)].copy()
     dados = dados[dados["ponto_id"].isin([int(x) for x in ponto_ids])]
@@ -734,40 +795,45 @@ def grafico_comparacao_iqa_multiplos(resultados, ponto_ids, pontos, faixas, foco
     resumo = resumo.sort_values(["dia", "ponto_id"])
     datas = resumo.sort_values("dia")["data_rotulo"].drop_duplicates().tolist()
     mapa_rotulos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
-    paleta = ["#17324D", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"]
+    codigos = {int(r["id"]): str(r["codigo"]) for _, r in pontos.iterrows()}
+    paleta = ["#17324D", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#64748B"]
+    formas = ["circle", "diamond", "square", "triangle-up", "x", "star"]
+    estilos = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"]
     fig = go.Figure()
     selecionados = [int(x) for x in ponto_ids]
-    total_registros = len(resumo)
     for i, pid in enumerate(selecionados):
         serie = resumo[resumo["ponto_id"] == pid]
         if serie.empty:
             continue
         cor = paleta[i % len(paleta)]
         fig.add_trace(go.Scatter(
-            x=serie["data_rotulo"], y=serie["valor"],
-            mode="lines+markers+text" if len(selecionados) <= 2 and total_registros <= 12 else "lines+markers",
+            x=serie["data_rotulo"], y=serie["valor"], mode="lines+markers",
             name=mapa_rotulos.get(pid, str(pid)),
-            line=dict(color=cor, width=2.0 if foco_id is not None and pid == int(foco_id) else 1.5),
-            marker=dict(size=8, color=cor, line=dict(color="white", width=1.5)),
-            text=[formatar_valor(v) for v in serie["valor"]],
-            textposition="top center", textfont=dict(size=11, color=cor),
-            cliponaxis=False,
+            line=dict(color=cor, dash=estilos[i % len(estilos)],
+                      width=2.5 if foco_id is not None and pid == int(foco_id) else 1.8),
+            marker=dict(size=10, symbol=formas[i % len(formas)], color=cor,
+                        line=dict(color="white", width=1.2)),
             customdata=serie["data_rotulo"],
             hovertemplate="%{fullData.name}<br>%{customdata}<br>IQA: <b>%{y:.2f}</b><extra></extra>",
         ))
     for _, fx in faixas.iterrows():
         fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
                       fillcolor=fundo_iqa(fx), opacity=1, layer="below", line_width=0)
-    _layout_eixo_coletas(fig, datas, altura=350, eixo_y="IQA (0–100)")
+    _layout_eixo_coletas(fig, datas, altura=400, eixo_y="IQA (0–100)")
     fig.update_yaxes(range=[0, 104])
-    fig.update_layout(legend=dict(orientation="h", y=1.13, x=0),
-                      showlegend=len(selecionados) > 1)
+    fig.update_layout(legend=dict(orientation="h", y=1.16, x=0),
+                      showlegend=len(selecionados) > 1,
+                      margin=dict(l=18, r=70, t=62, b=42),
+                      hovermode="closest")
+    coincidentes = _anotacoes_series_sem_colisao(fig, resumo, codigos, eixo_iqa=True)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
+    if coincidentes:
+        st.caption("Valores iguais ou próximos: rótulos identificados pelo código do ponto, "
+                   "deslocados visualmente. As curvas mantêm os valores reais.")
 
 
 def grafico_temporal_parametros_multiplos(resultados, parametro_id, ponto_ids, pontos, parametros):
-    """Mesmo parâmetro ao longo das campanhas, até seis pontos em tons de azul."""
+    """Comparativo temporal; marcadores distintos e rótulos sem sobreposição."""
     base = resultados[(resultados["param_id"] == int(parametro_id)) &
                       (resultados["ponto_id"].isin(ponto_ids))].copy()
     if base.empty:
@@ -777,37 +843,44 @@ def grafico_temporal_parametros_multiplos(resultados, parametro_id, ponto_ids, p
                   .agg(valor=("valor", "mean"))).sort_values("dia")
     datas = base["data_rotulo"].drop_duplicates().tolist()
     rotulos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
+    codigos = {int(r["id"]): str(r["codigo"]) for _, r in pontos.iterrows()}
     cor_linhas = ["#1D4ED8", "#0284C7", "#4338CA", "#0891B2", "#2563EB", "#64748B"]
+    formas = ["circle", "diamond", "square", "triangle-up", "x", "star"]
+    estilos = ["solid", "dash", "dot", "dashdot", "longdash", "longdashdot"]
     fig = go.Figure()
     for ordem, pid in enumerate(ponto_ids):
         serie = base[base["ponto_id"] == int(pid)]
         if serie.empty:
             continue
         cor = cor_linhas[ordem % len(cor_linhas)]
-        exibir_valores = len(base) <= 15
         fig.add_trace(go.Scatter(
-            x=serie["data_rotulo"], y=serie["valor"],
-            mode="lines+markers+text" if exibir_valores else "lines+markers",
+            x=serie["data_rotulo"], y=serie["valor"], mode="lines+markers",
             name=rotulos.get(int(pid), str(pid)),
-            line=dict(color=cor, width=2),
-            marker=dict(color=cor, size=9, line=dict(color="white", width=1.5)),
-            text=[formatar_valor(v) for v in serie["valor"]] if exibir_valores else None,
-            textposition="top center", textfont=dict(color=cor, size=11),
+            line=dict(color=cor, width=2, dash=estilos[ordem % len(estilos)]),
+            marker=dict(color=cor, size=10, symbol=formas[ordem % len(formas)],
+                        line=dict(color="white", width=1.3)),
             cliponaxis=False,
-            hovertemplate="%{fullData.name}<br>%{x}<br><b>%{y:.5f}</b><extra></extra>",
+            customdata=serie["data_rotulo"],
+            hovertemplate="%{fullData.name}<br>%{customdata}<br><b>%{y:.5f}</b><extra></extra>",
         ))
     unidade = str(parametros.loc[parametros["id"] == int(parametro_id), "unidade"].iloc[0])
     if unidade == "-":
         unidade = ""
-    _layout_eixo_coletas(fig, datas, altura=355, eixo_y=unidade)
+    _layout_eixo_coletas(fig, datas, altura=400, eixo_y=unidade)
     valores = base["valor"].astype(float)
     vmin, vmax = float(valores.min()), float(valores.max())
-    folga = max((vmax-vmin)*0.15, abs(vmax)*0.09, 0.3)
-    fig.update_yaxes(range=[min(0, vmin-folga) if vmin >= 0 else vmin-folga, vmax+folga*1.5])
+    folga = max((vmax-vmin)*0.18, abs(vmax)*0.10, 0.3)
+    fig.update_yaxes(range=[min(0, vmin-folga) if vmin >= 0 else vmin-folga,
+                            vmax+folga*2.6])
     fig.update_layout(showlegend=True,
-                      legend=dict(orientation="h", y=1.18, x=0),
-                      margin=dict(l=14, r=35, t=45, b=38))
+                      legend=dict(orientation="h", y=1.17, x=0),
+                      margin=dict(l=18, r=70, t=62, b=42),
+                      hovermode="closest")
+    coincidentes = _anotacoes_series_sem_colisao(fig, base, codigos)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    if coincidentes:
+        st.caption("Valores iguais ou próximos: rótulos identificados pelo código do ponto, "
+                   "deslocados visualmente. As curvas mantêm os valores reais.")
 
 
 def credenciais_admin():
