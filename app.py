@@ -471,6 +471,40 @@ def _layout_eixo_coletas(fig, datas, altura=320, eixo_y=""):
 
 
 
+
+def _referencias_parametro(parametro):
+    """Retorna exclusivamente limites revisados e validados, sem modificar dados."""
+    if not bool(parametro.get("referencia_validada", 0)):
+        return []
+    tipo = str(parametro.get("tipo_limite", "nenhum"))
+    unidade = str(parametro.get("unidade") or "").strip()
+    sufixo = "" if unidade == "-" else f" {unidade}"
+    retorno = []
+    for tipo_esperado, chave, nome in (
+        (("minimo", "intervalo"), "limite_min", "Referência mínima"),
+        (("maximo", "intervalo"), "limite_max", "Referência máxima"),
+    ):
+        valor = parametro.get(chave)
+        if tipo in tipo_esperado and valor is not None and pd.notna(valor):
+            numero = float(valor)
+            if math.isfinite(numero):
+                retorno.append((numero, f"{nome}: {formatar_valor(numero)}{sufixo}"))
+    return retorno
+
+
+def _referencias_grafico(fig, parametro, orientacao="horizontal"):
+    """Linha vermelha espessa com o valor exato; apenas apresentação Plotly."""
+    refs = _referencias_parametro(parametro)
+    for numero, rotulo in refs:
+        estilo = dict(line_color="#DC2626", line_width=3, line_dash="solid",
+                      annotation_text=rotulo,
+                      annotation_font_color="#B91C1C", annotation_font_size=12)
+        if orientacao == "vertical":
+            fig.add_vline(x=numero, annotation_position="top right", **estilo)
+        else:
+            fig.add_hline(y=numero, annotation_position="top right", **estilo)
+    return [r[0] for r in refs]
+
 def grafico_temporal(dados, parametro, config_param):
     if dados.empty:
         st.info("Não há medições registradas para este parâmetro no ponto selecionado.")
@@ -494,19 +528,10 @@ def grafico_temporal(dados, parametro, config_param):
         customdata=dados["data_rotulo"],
         hovertemplate="%{customdata}<br><b>%{y:.5f}</b> " + unidade + "<extra></extra>",
     ))
-    if bool(config_param.get("referencia_validada", 0)):
-        tipo = config_param["tipo_limite"]
-        for chave, rotulo in (("limite_min", "Referência mínima"),
-                              ("limite_max", "Referência máxima")):
-            if ((chave == "limite_min" and tipo in ("minimo", "intervalo")) or
-                (chave == "limite_max" and tipo in ("maximo", "intervalo"))):
-                valor = config_param[chave]
-                if pd.notna(valor):
-                    fig.add_hline(y=float(valor), line_dash="dot", line_width=1.2,
-                                  line_color="#94A3B8", annotation_text=rotulo,
-                                  annotation_position="top left")
+    referencias = _referencias_grafico(fig, config_param)
     _layout_eixo_coletas(fig, datas, altura=315, eixo_y=unidade)
-    baixo, alto = float(valores.min()), float(valores.max())
+    extremos = [float(valores.min()), float(valores.max()), *referencias]
+    baixo, alto = min(extremos), max(extremos)
     margem = max((alto - baixo) * .16, max(abs(baixo), abs(alto)) * .09, .4)
     fig.update_yaxes(range=[min(0, baixo-margem) if baixo >= 0 else baixo-margem, alto+margem*1.6])
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
@@ -697,7 +722,9 @@ def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
         showlegend=False,
     ))
     valores = dados["valor"].astype(float)
-    minimo, maximo = float(valores.min()), float(valores.max())
+    referencias = _referencias_parametro(param)
+    escala = [float(valores.min()), float(valores.max()), *[v for v, _ in referencias]]
+    minimo, maximo = min(escala), max(escala)
     span = max(maximo - minimo, abs(minimo) * .15, abs(maximo) * .15, 1.0)
     fig.update_layout(
         height=max(220, min(1050, 125 + len(dados) * 32)),
@@ -711,14 +738,7 @@ def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
         font=dict(family="Montserrat", color="#334155", size=11),
         showlegend=False,
     )
-    if bool(param.get("referencia_validada", 0)):
-        tipo = param["tipo_limite"]
-        if tipo in ("minimo", "intervalo") and pd.notna(param["limite_min"]):
-            fig.add_vline(x=float(param["limite_min"]), line_dash="dot", line_width=1,
-                          line_color="#94A3B8")
-        if tipo in ("maximo", "intervalo") and pd.notna(param["limite_max"]):
-            fig.add_vline(x=float(param["limite_max"]), line_dash="dot", line_width=1,
-                          line_color="#94A3B8")
+    _referencias_grafico(fig, param, orientacao="vertical")
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
@@ -863,12 +883,15 @@ def grafico_temporal_parametros_multiplos(resultados, parametro_id, ponto_ids, p
             customdata=serie["data_rotulo"],
             hovertemplate="%{fullData.name}<br>%{customdata}<br><b>%{y:.5f}</b><extra></extra>",
         ))
-    unidade = str(parametros.loc[parametros["id"] == int(parametro_id), "unidade"].iloc[0])
+    parametro_referencia = parametros.loc[parametros["id"] == int(parametro_id)].iloc[0]
+    unidade = str(parametro_referencia["unidade"])
     if unidade == "-":
         unidade = ""
     _layout_eixo_coletas(fig, datas, altura=400, eixo_y=unidade)
+    referencias = _referencias_grafico(fig, parametro_referencia)
     valores = base["valor"].astype(float)
-    vmin, vmax = float(valores.min()), float(valores.max())
+    extremos = [float(valores.min()), float(valores.max()), *referencias]
+    vmin, vmax = min(extremos), max(extremos)
     folga = max((vmax-vmin)*0.18, abs(vmax)*0.10, 0.3)
     fig.update_yaxes(range=[min(0, vmin-folga) if vmin >= 0 else vmin-folga,
                             vmax+folga*2.6])
