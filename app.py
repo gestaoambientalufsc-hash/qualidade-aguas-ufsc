@@ -1,7 +1,7 @@
 """Portal público + administração de qualidade da água — UFSC.
 
 Iniciar: streamlit run app.py
-Senha administrativa padrão: 1234
+Credenciais administrativas definidas nas Secrets do Streamlit
 """
 from __future__ import annotations
 
@@ -29,6 +29,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 db.inicializar_banco()
+
+for _chave, _padrao in {
+    "pagina": "publico", "autenticado": False, "admin_menu": "Visão geral",
+    "falhas_login": 0, "bloqueio_ate": 0.0,
+}.items():
+    if _chave not in st.session_state:
+        st.session_state[_chave] = _padrao
 
 # -----------------------------------------------------------------------------
 # Design system — aparência institucional, contraste e componentes compactos.
@@ -139,6 +146,21 @@ p,li {line-height:1.55;}
 button[kind="primary"] {background:#2563EB !important; border-color:#2563EB !important; color:white !important;}
 button[kind="primary"]:hover {background:#1D4ED8 !important;}
 button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !important;}
+/* Botão de inclusão de ponto: ação leve, compacta e alinhada à direita. */
+[class*="st-key-novo_ponto_admin"] button {
+  background:#DBEAFE !important;
+  border:1px solid #BFDBFE !important;
+  color:#1D4ED8 !important;
+  font-size:.79rem !important;
+  font-weight:600 !important;
+  min-height:34px !important;
+  padding:5px 10px !important;
+}
+[class*="st-key-novo_ponto_admin"] button:hover {
+  background:#BFDBFE !important;
+  border-color:#93C5FD !important;
+  color:#1E40AF !important;
+}
 [data-baseweb="input"] > div, [data-baseweb="select"] > div,
 [data-testid="stDateInput"] input, [data-testid="stTextArea"] textarea {
   border-radius:8px !important; border-color:#DCE5EA !important;}
@@ -150,6 +172,49 @@ button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !im
 [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) {
   background:#EFF6FF; color:#1D4ED8; font-weight:700;}
 [data-testid="stSidebar"] [data-testid="stRadio"] label:hover {background:#F8FAFF;}
+.campaign-kpis {display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap;padding-bottom:11px;}
+.campaign-kpis span {font-size:12px;color:#64748B;white-space:nowrap;}
+.campaign-kpis strong {font-size:18px;color:#17324D;margin-right:4px;}
+[data-baseweb="tag"] {background:#2563EB !important;color:white !important;border:1px solid #1D4ED8 !important;}
+[data-baseweb="tag"] span, [data-baseweb="tag"] svg {color:white !important;fill:white !important;}
+[data-baseweb="select"]:focus-within > div {border-color:#2563EB !important;}
+[class*="st-key-entrar_admin"] button {
+  width:46px !important; min-width:46px !important; height:46px !important;
+  border-radius:12px !important; background:#EFF6FF !important;
+  color:#1D4ED8 !important; border:1px solid #BFDBFE !important;
+  display:flex !important; align-items:center !important; justify-content:center !important;
+}
+[class*="st-key-entrar_admin"] button:hover {background:#DBEAFE !important; border-color:#93C5FD !important;}
+[class*="st-key-entrar_admin"] {display:flex;justify-content:flex-end;}
+/* Ícone próprio desenhado por máscara SVG: centralização independente do ícone Material */
+[class*="st-key-entrar_admin"] button {
+  position:relative !important;
+  display:grid !important;
+  place-items:center !important;
+  padding:0 !important;
+  line-height:0 !important;
+  font-size:0 !important;
+  overflow:hidden !important;
+}
+[class*="st-key-entrar_admin"] button > * {display:none !important;}
+[class*="st-key-entrar_admin"] button::before {
+  content:"" !important;
+  display:block !important;
+  width:19px !important;
+  height:19px !important;
+  margin:0 !important;
+  padding:0 !important;
+  background-color:#1D4ED8 !important;
+  -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='3.2'/%3E%3Cpath d='M5.5 20c.6-3.3 3-5 6.5-5s5.9 1.7 6.5 5'/%3E%3C/svg%3E") !important;
+  mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='3.2'/%3E%3Cpath d='M5.5 20c.6-3.3 3-5 6.5-5s5.9 1.7 6.5 5'/%3E%3C/svg%3E") !important;
+  -webkit-mask-repeat:no-repeat !important;
+  mask-repeat:no-repeat !important;
+  -webkit-mask-position:center !important;
+  mask-position:center !important;
+  -webkit-mask-size:contain !important;
+  mask-size:contain !important;
+  transform:none !important;
+}
 [data-testid="stDataFrame"] {border-radius:10px; overflow:hidden;}
 [data-testid="stPlotlyChart"] {border-radius:10px;}
 section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bottom:.05rem;}
@@ -182,6 +247,32 @@ section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bott
  .brand-title {font-size:16px;}
  .brand-logo {width:68px;height:68px;}
 }
+
+/* Identidade visual global: azul; cores de classificação IQA ficam só nos gráficos. */
+:root { --primary-color: #2563EB; }
+[data-testid="stMultiSelect"] [data-baseweb="tag"],
+[data-testid="stMultiSelect"] span[data-baseweb="tag"],
+.stMultiSelect [data-baseweb="tag"],
+[data-baseweb="select"] [data-baseweb="tag"] {
+  background-color:#2563EB !important;
+  border:1px solid #1D4ED8 !important;
+  color:#FFFFFF !important;
+  border-radius:7px !important;
+}
+[data-testid="stMultiSelect"] [data-baseweb="tag"] *,
+.stMultiSelect [data-baseweb="tag"] *,
+[data-baseweb="select"] [data-baseweb="tag"] * {
+  color:#FFFFFF !important;
+  fill:#FFFFFF !important;
+}
+[data-testid="stMultiSelect"] [data-baseweb="tag"] svg,
+.stMultiSelect [data-baseweb="tag"] svg {stroke:#FFFFFF !important;}
+[data-testid="stMultiSelect"] [data-baseweb="select"]:focus-within > div,
+[data-testid="stSelectbox"] [data-baseweb="select"]:focus-within > div {
+ border-color:#2563EB !important; box-shadow:0 0 0 1px #2563EB !important;
+}
+[data-testid="stTabs"] button[aria-selected="true"] {color:#2563EB !important;}
+[data-testid="stTabs"] [data-baseweb="tab-highlight"] {background:#2563EB !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -356,52 +447,91 @@ def _preparar_serie_grafico(dados):
     return serie, datas
 
 
-def _layout_eixo_coletas(fig, datas, altura=315, eixo_y=""):
-    # Categoria preserva o ordenamento cronológico sem inserir dias intermediários.
+def _layout_eixo_coletas(fig, datas, altura=320, eixo_y=""):
+    """Datas categóricas: nenhum dia artificial entre as coletas.
+
+    Deixa respiro horizontal e vertical para que bolinhas e rótulos não sejam cortados.
+    """
+    qt = len(datas)
+    largura_x = [-0.35, max(qt - 1 + 0.35, 0.35)] if qt else [-0.5, 0.5]
     fig.update_layout(
         height=altura, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=8, r=8, t=20, b=12),
+        margin=dict(l=14, r=28, t=35, b=34),
         xaxis=dict(type="category", categoryorder="array", categoryarray=datas,
                    tickmode="array", tickvals=datas, ticktext=datas,
                    showgrid=False, title="", automargin=True,
-                   tickangle=-30 if len(datas) > 7 else 0),
-        yaxis=dict(gridcolor="#EEF3F5", zeroline=False, title=eixo_y),
+                   range=largura_x, ticks="", fixedrange=False,
+                   tickangle=-30 if qt > 7 else 0),
+        yaxis=dict(gridcolor="#EFF3F8", zeroline=False, title=eixo_y,
+                   automargin=True, ticks=""),
         hovermode="closest", showlegend=False,
-        font=dict(family="Montserrat", color=NAVY, size=11),
+        hoverlabel=dict(bgcolor="white"),
+        font=dict(family="Montserrat", color="#334155", size=11),
     )
+
 
 
 def grafico_temporal(dados, parametro, config_param):
     if dados.empty:
-        st.info("Ainda não existem resultados para este parâmetro no ponto selecionado.")
+        st.info("Não há medições registradas para este parâmetro no ponto selecionado.")
         return
     dados, datas = _preparar_serie_grafico(dados)
     if dados.empty:
-        st.info("Sem medições registradas para essa seleção.")
+        st.info("Não há resultados para essa seleção.")
         return
+    valores = dados["valor"].astype(float)
+    unidade = "" if config_param["unidade"] == "-" else str(config_param["unidade"])
     fig = go.Figure()
     fig.add_trace(go.Scatter(
-        x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers",
+        x=dados["data_rotulo"], y=valores,
+        mode="lines+markers+text",
         name="Medições", connectgaps=False,
-        line=dict(color="#2563EB", width=3),
-        marker=dict(size=11, color="#2563EB", line=dict(color="white", width=1.5)),
-        fill="tozeroy", fillcolor="rgba(37,99,235,0.08)",
-        customdata=dados["dia"].dt.strftime("%d/%m/%Y"),
-        hovertemplate="%{customdata}<br><b>%{y:.5f}</b><extra></extra>",
+        line=dict(color="#2563EB", width=1.7),
+        marker=dict(size=9, color="#2563EB", line=dict(color="white", width=1.5)),
+        text=[formatar_valor(v) for v in valores],
+        textposition="top center", textfont=dict(size=12, color="#1D4ED8"),
+        cliponaxis=False,
+        customdata=dados["data_rotulo"],
+        hovertemplate="%{customdata}<br><b>%{y:.5f}</b> " + unidade + "<extra></extra>",
     ))
     if bool(config_param.get("referencia_validada", 0)):
         tipo = config_param["tipo_limite"]
-        for chave, rotulo in (("limite_min", "Referência mínima"), ("limite_max", "Referência máxima")):
+        for chave, rotulo in (("limite_min", "Referência mínima"),
+                              ("limite_max", "Referência máxima")):
             if ((chave == "limite_min" and tipo in ("minimo", "intervalo")) or
-                    (chave == "limite_max" and tipo in ("maximo", "intervalo"))):
+                (chave == "limite_max" and tipo in ("maximo", "intervalo"))):
                 valor = config_param[chave]
                 if pd.notna(valor):
-                    fig.add_hline(y=float(valor), line_dash="dash", line_color="#F59E0B",
-                                  annotation_text=rotulo, annotation_position="top left")
-    unidade = "" if config_param["unidade"] == "-" else config_param["unidade"]
-    _layout_eixo_coletas(fig, datas, eixo_y=unidade)
-    fig.update_layout(hoverlabel=dict(bgcolor="white"), showlegend=False)
+                    fig.add_hline(y=float(valor), line_dash="dot", line_width=1.2,
+                                  line_color="#94A3B8", annotation_text=rotulo,
+                                  annotation_position="top left")
+    _layout_eixo_coletas(fig, datas, altura=315, eixo_y=unidade)
+    baixo, alto = float(valores.min()), float(valores.max())
+    margem = max((alto - baixo) * .16, max(abs(baixo), abs(alto)) * .09, .4)
+    fig.update_yaxes(range=[min(0, baixo-margem) if baixo >= 0 else baixo-margem, alto+margem*1.6])
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
+
+
+# Cores com maior saturação para as faixas do IQA.
+# Os intervalos/limites vêm do banco; apenas a aparência é definida aqui.
+IQA_CORES = {
+    "Péssima": "#DC2626", "Ruim": "#EA580C", "Regular": "#D97706",
+    "Boa": "#16A34A", "Ótima": "#047857",
+}
+IQA_FUNDOS = {
+    "Péssima": "rgba(220,38,38,0.16)", "Ruim": "rgba(234,88,12,0.13)",
+    "Regular": "rgba(245,158,11,0.15)", "Boa": "rgba(34,197,94,0.13)",
+    "Ótima": "rgba(5,150,105,0.16)",
+}
+
+
+def cor_iqa(faixa):
+    return IQA_CORES.get(str(faixa["nome"]), str(faixa["cor_texto"]))
+
+
+def fundo_iqa(faixa):
+    return IQA_FUNDOS.get(str(faixa["nome"]), str(faixa["cor_grafico"]))
 
 
 def grafico_iqa(dados, faixas):
@@ -410,39 +540,42 @@ def grafico_iqa(dados, faixas):
         return
     dados, datas = _preparar_serie_grafico(dados)
     if dados.empty:
-        st.info("Ainda não há medições de IQA válidas para este ponto.")
+        st.info("Ainda não existem medições válidas de IQA neste ponto.")
         return
-
     cores, categorias = [], []
     for valor in dados["valor"]:
         faixa = classificar_iqa(valor, faixas)
-        cores.append(str(faixa["cor_texto"]) if faixa is not None else "#64748B")
+        cores.append(cor_iqa(faixa) if faixa is not None else "#64748B")
         categorias.append(str(faixa["nome"]) if faixa is not None else "Indefinida")
-
     fig = go.Figure()
     for _, fx in faixas.iterrows():
         fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
-                      fillcolor=fx["cor_grafico"], opacity=1,
+                      fillcolor=fundo_iqa(fx), opacity=1,
                       layer="below", line_width=0)
     fig.add_trace(go.Scatter(
-        x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers",
+        x=dados["data_rotulo"], y=dados["valor"], mode="lines+markers+text",
         name="IQA", connectgaps=False,
-        line=dict(color="#475569", width=3),
-        marker=dict(size=13, color=cores, line=dict(color="white", width=2)),
+        line=dict(color="#475569", width=1.7),
+        marker=dict(size=10, color=cores, line=dict(color="white", width=1.6)),
+        text=[formatar_valor(v) for v in dados["valor"]],
+        textposition="top center", textfont=dict(color="#334155", size=11),
+        cliponaxis=False,
         customdata=list(zip(dados["data_rotulo"], categorias)),
-        hovertemplate="%{customdata[0]}<br>IQA: <b>%{y:.1f}</b><br>%{customdata[1]}<extra></extra>",
+        hovertemplate="%{customdata[0]}<br>IQA: <b>%{y:.2f}</b><br>%{customdata[1]}<extra></extra>",
     ))
     _layout_eixo_coletas(fig, datas, eixo_y="IQA (0–100)")
-    fig.update_yaxes(range=[0, 100])
-    fig.update_layout(hoverlabel=dict(bgcolor="white"), showlegend=False)
+    fig.update_yaxes(range=[0, 104])
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
     itens = "".join(
         f'<span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap">'
-        f'<span style="width:9px;height:9px;background:{txt(fx.cor_texto)};'
+        f'<span style="width:9px;height:9px;background:{txt(IQA_CORES.get(fx.nome, fx.cor_texto))};'
         f'border-radius:50%;display:inline-block"></span>{txt(fx.nome)}</span>'
         for fx in faixas.sort_values("valor_min").itertuples()
     )
-    st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:#64748B;margin:2px 0 8px">{itens}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="display:flex;flex-wrap:wrap;gap:12px;'
+                f'font-size:12px;color:#64748B;margin:2px 0 8px">{itens}</div>',
+                unsafe_allow_html=True)
+
 
 
 def preparar_resultados_publicos(resultados):
@@ -471,7 +604,7 @@ def obter_iqa_por_ponto(campanha_df, faixas):
     for valor in resumo["valor"]:
         fx = classificar_iqa(valor, faixas)
         classes.append(str(fx["nome"]) if fx is not None else "Sem classificação")
-        cores.append(str(fx["cor_texto"]) if fx is not None else "#94A3B8")
+        cores.append(cor_iqa(fx) if fx is not None else "#94A3B8")
     resumo["classificacao"] = classes
     resumo["cor"] = cores
     return resumo
@@ -502,64 +635,42 @@ def estilos_mapa_por_campanha(pontos, campanha_df, faixas):
 
 
 def grafico_distribuicao_iqa(campanha_df, faixas):
-    resumo_iqa = obter_iqa_por_ponto(campanha_df, faixas)
-    if resumo_iqa.empty:
-        st.info("Não há IQA registrado nesta campanha.")
+    """Resumo discreto por categoria, legível até com somente um IQA."""
+    resumo = obter_iqa_por_ponto(campanha_df, faixas)
+    total = len(resumo)
+    if not total:
+        st.caption("Nenhum IQA informado nesta campanha.")
         return
-    ordem = faixas.sort_values("valor_min")
-    registros = []
-    for _, fx in ordem.iterrows():
-        qtd = int((resumo_iqa["classificacao"] == fx["nome"]).sum())
-        if qtd > 0:
-            registros.append((fx["nome"], qtd, fx["cor_texto"]))
-    fig = go.Figure(go.Pie(
-        labels=[r[0] for r in registros],
-        values=[r[1] for r in registros],
-        hole=0.62,
-        sort=False,
-        marker=dict(colors=[r[2] for r in registros], line=dict(color="white", width=2)),
-        textinfo="label+value",
-        hovertemplate="%{label}: <b>%{value}</b> ponto(s)<extra></extra>",
-    ))
-    fig.update_layout(
-        height=300, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=10, r=10, t=12, b=12),
-        font=dict(family="Montserrat", color=NAVY, size=11),
-        showlegend=False,
-        annotations=[dict(text=f"<b>{len(resumo_iqa)}</b><br>com IQA", x=0.5, y=0.5, showarrow=False,
-                          font=dict(size=17, color=NAVY))],
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-
-def grafico_cobertura_campanhas(resultados):
-    if resultados.empty:
-        st.info("Ainda não há campanhas registradas.")
-        return
-    base = preparar_resultados_publicos(resultados)
-    resumo = (base.groupby(["dia", "data_rotulo"], as_index=False)
-                .agg(pontos=("ponto_id", "nunique"),
-                     parametros=("param_id", "nunique"),
-                     resultados=("id", "count")))
-    resumo = resumo.sort_values("dia")
-    fig = go.Figure()
-    fig.add_trace(go.Bar(x=resumo["data_rotulo"], y=resumo["pontos"], name="Pontos amostrados",
-                         marker_color="#2563EB", bordercolor="white"))
-    fig.add_trace(go.Bar(x=resumo["data_rotulo"], y=resumo["parametros"], name="Parâmetros medidos",
-                         marker_color="#93C5FD", bordercolor="white"))
-    fig.update_layout(
-        barmode="group", height=315, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=8, r=8, t=20, b=12),
-        xaxis=dict(type="category", categoryorder="array", categoryarray=resumo["data_rotulo"].tolist(),
-                   showgrid=False, title="", tickangle=-30 if len(resumo) > 7 else 0),
-        yaxis=dict(gridcolor="#EEF3F5", zeroline=False, title="Quantidade"),
-        legend=dict(orientation="h", y=1.12, x=0),
-        font=dict(family="Montserrat", color=NAVY, size=11),
-    )
-    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+    resumo = resumo.copy()
+    col_a, col_b = st.columns([1, 2])
+    col_a.metric("Com IQA", total)
+    if total == 1:
+        registro = resumo.iloc[0]
+        with col_b:
+            st.markdown(
+                f'<div style="font-size:13px;color:#64748B;margin-top:7px">Classificação</div>'
+                f'<div style="font-size:19px;font-weight:700;color:{txt(registro["cor"])}">'
+                f'{txt(registro["classificacao"])} · {formatar_valor(registro["valor"])}'
+                f'</div>', unsafe_allow_html=True)
+    else:
+        col_b.metric("Categorias presentes", resumo["classificacao"].nunique())
+    for _, fx in faixas.sort_values("valor_min", ascending=False).iterrows():
+        qtd = int((resumo["classificacao"] == fx["nome"]).sum())
+        if qtd == 0:
+            continue
+        proporcao = 100 * qtd / total
+        st.markdown(
+            f'<div style="display:flex;align-items:center;gap:9px;margin:8px 0;">'
+            f'<span style="width:10px;height:10px;flex-shrink:0;border-radius:50%;background:{txt(cor_iqa(fx))}"></span>'
+            f'<span style="font-size:12px;color:#334155;min-width:66px">{txt(fx["nome"])}</span>'
+            f'<span style="flex:1;height:7px;background:#EFF3F8;border-radius:8px;overflow:hidden">'
+            f'<span style="display:block;background:{txt(cor_iqa(fx))};height:100%;width:{proporcao:.2f}%;border-radius:8px"></span></span>'
+            f'<strong style="font-size:12px;color:#17324D">{qtd}</strong></div>',
+            unsafe_allow_html=True)
 
 
 def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
+    """Comparação por marcadores azuis, sem barras enormes e com valor exato."""
     dados = campanha_df[campanha_df["param_id"] == int(parametro_id)].copy()
     if dados.empty:
         st.info("Nenhum ponto possui esse parâmetro na campanha selecionada.")
@@ -567,32 +678,48 @@ def grafico_comparacao_parametro(campanha_df, parametro_id, parametros, pontos):
     dados = (dados.groupby(["ponto_id", "codigo", "local"], as_index=False)
                   .agg(valor=("valor", "mean"), registros=("id", "count")))
     ordem = {int(pid): i for i, pid in enumerate(pontos["id"].astype(int).tolist())}
-    dados = dados.sort_values(by="ponto_id", key=lambda s: s.map(ordem))
+    dados["ordem"] = dados["ponto_id"].map(ordem)
+    dados = dados.sort_values("ordem")
     param = parametros[parametros["id"] == int(parametro_id)].iloc[0]
-    unidade = "" if str(param["unidade"]) == "-" else f" {param['unidade']}"
-    dados["rotulo"] = dados.apply(lambda r: f"{r['codigo']}", axis=1)
-    fig = go.Figure(go.Bar(
-        x=dados["rotulo"], y=dados["valor"],
-        marker=dict(color="#2563EB", line=dict(color="white", width=1.2)),
-        text=[formatar_valor(v) for v in dados["valor"]], textposition="outside",
+    unidade = "" if str(param["unidade"]) == "-" else str(param["unidade"])
+    rotulos = [f"P{row.codigo}" if str(row.codigo).isdigit() else str(row.codigo)
+               for row in dados.itertuples()]
+    fig = go.Figure(go.Scatter(
+        x=dados["valor"], y=rotulos, mode="markers+text",
+        marker=dict(size=11, color="#2563EB", line=dict(color="white", width=1.7)),
+        text=[formatar_valor(v) for v in dados["valor"]],
+        textposition="middle right", textfont=dict(color="#1D4ED8", size=12),
+        cliponaxis=False,
         customdata=dados[["local", "registros"]].values,
-        hovertemplate="<b>%{x}</b><br>%{customdata[0]}<br>Valor: <b>%{y:.5f}</b>" + unidade + "<br>Registros: %{customdata[1]}<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>%{customdata[0]}<br>Valor: <b>%{x:.5f}</b> " + unidade +
+                      "<br>Medições: %{customdata[1]}<extra></extra>",
+        showlegend=False,
     ))
+    valores = dados["valor"].astype(float)
+    minimo, maximo = float(valores.min()), float(valores.max())
+    span = max(maximo - minimo, abs(minimo) * .15, abs(maximo) * .15, 1.0)
     fig.update_layout(
-        height=330, paper_bgcolor="white", plot_bgcolor="white",
-        margin=dict(l=8, r=8, t=18, b=12),
-        xaxis=dict(title="", showgrid=False),
-        yaxis=dict(title=unidade.strip(), gridcolor="#EEF3F5", zeroline=False),
-        font=dict(family="Montserrat", color=NAVY, size=11),
+        height=max(220, min(1050, 125 + len(dados) * 32)),
+        paper_bgcolor="white", plot_bgcolor="white",
+        margin=dict(l=18, r=85, t=23, b=32),
+        xaxis=dict(title=unidade, gridcolor="#EFF3F8", zeroline=False,
+                   range=[minimo - .18*span, maximo + .40*span], ticks=""),
+        yaxis=dict(title="", type="category", categoryorder="array",
+                   categoryarray=list(reversed(rotulos)), showgrid=False, ticks=""),
+        hoverlabel=dict(bgcolor="white"),
+        font=dict(family="Montserrat", color="#334155", size=11),
         showlegend=False,
     )
     if bool(param.get("referencia_validada", 0)):
         tipo = param["tipo_limite"]
         if tipo in ("minimo", "intervalo") and pd.notna(param["limite_min"]):
-            fig.add_hline(y=float(param["limite_min"]), line_dash="dash", line_color="#F59E0B")
+            fig.add_vline(x=float(param["limite_min"]), line_dash="dot", line_width=1,
+                          line_color="#94A3B8")
         if tipo in ("maximo", "intervalo") and pd.notna(param["limite_max"]):
-            fig.add_hline(y=float(param["limite_max"]), line_dash="dash", line_color="#F59E0B")
+            fig.add_vline(x=float(param["limite_max"]), line_dash="dot", line_width=1,
+                          line_color="#94A3B8")
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+
 
 
 def grafico_comparacao_iqa_multiplos(resultados, ponto_ids, pontos, faixas, foco_id=None):
@@ -609,56 +736,92 @@ def grafico_comparacao_iqa_multiplos(resultados, ponto_ids, pontos, faixas, foco
     mapa_rotulos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
     paleta = ["#17324D", "#1D4ED8", "#2563EB", "#3B82F6", "#60A5FA", "#93C5FD"]
     fig = go.Figure()
-    for i, pid in enumerate([int(x) for x in ponto_ids]):
+    selecionados = [int(x) for x in ponto_ids]
+    total_registros = len(resumo)
+    for i, pid in enumerate(selecionados):
         serie = resumo[resumo["ponto_id"] == pid]
         if serie.empty:
             continue
         cor = paleta[i % len(paleta)]
-        largura = 4 if foco_id is not None and pid == int(foco_id) else 2.5
         fig.add_trace(go.Scatter(
-            x=serie["data_rotulo"], y=serie["valor"], mode="lines+markers",
+            x=serie["data_rotulo"], y=serie["valor"],
+            mode="lines+markers+text" if len(selecionados) <= 2 and total_registros <= 12 else "lines+markers",
             name=mapa_rotulos.get(pid, str(pid)),
-            line=dict(color=cor, width=largura),
-            marker=dict(size=10, color=cor, line=dict(color="white", width=1.4)),
-            customdata=serie["dia"].dt.strftime("%d/%m/%Y"),
-            hovertemplate="%{fullData.name}<br>%{customdata}<br>IQA: <b>%{y:.1f}</b><extra></extra>",
+            line=dict(color=cor, width=2.0 if foco_id is not None and pid == int(foco_id) else 1.5),
+            marker=dict(size=8, color=cor, line=dict(color="white", width=1.5)),
+            text=[formatar_valor(v) for v in serie["valor"]],
+            textposition="top center", textfont=dict(size=11, color=cor),
+            cliponaxis=False,
+            customdata=serie["data_rotulo"],
+            hovertemplate="%{fullData.name}<br>%{customdata}<br>IQA: <b>%{y:.2f}</b><extra></extra>",
         ))
     for _, fx in faixas.iterrows():
-        fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]), fillcolor=fx["cor_grafico"],
-                      opacity=1, layer="below", line_width=0)
+        fig.add_hrect(y0=float(fx["valor_min"]), y1=float(fx["valor_max"]),
+                      fillcolor=fundo_iqa(fx), opacity=1, layer="below", line_width=0)
     _layout_eixo_coletas(fig, datas, altura=350, eixo_y="IQA (0–100)")
-    fig.update_yaxes(range=[0, 100])
-    fig.update_layout(legend=dict(orientation="h", y=1.15, x=0), hoverlabel=dict(bgcolor="white"))
+    fig.update_yaxes(range=[0, 104])
+    fig.update_layout(legend=dict(orientation="h", y=1.13, x=0),
+                      showlegend=len(selecionados) > 1)
     st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-    st.caption("Para manter a leitura clara, a comparação temporal do IQA mostra até 6 pontos por vez, todos em tons de azul.")
 
 
-# -----------------------------------------------------------------------------
-# Sessão, acesso e navegação.
-# -----------------------------------------------------------------------------
-if "autenticado" not in st.session_state:
-    st.session_state.autenticado = False
-if "pagina" not in st.session_state:
-    st.session_state.pagina = "publico"
-if "admin_menu" not in st.session_state:
-    st.session_state.admin_menu = "Visão geral"
-if "falhas_login" not in st.session_state:
-    st.session_state.falhas_login = 0
-if "bloqueio_ate" not in st.session_state:
-    st.session_state.bloqueio_ate = 0.0
+
+def grafico_temporal_parametros_multiplos(resultados, parametro_id, ponto_ids, pontos, parametros):
+    """Mesmo parâmetro ao longo das campanhas, até seis pontos em tons de azul."""
+    base = resultados[(resultados["param_id"] == int(parametro_id)) &
+                      (resultados["ponto_id"].isin(ponto_ids))].copy()
+    if base.empty:
+        st.info("Não há medições para os pontos escolhidos.")
+        return
+    base = (base.groupby(["ponto_id", "dia", "data_rotulo"], as_index=False)
+                  .agg(valor=("valor", "mean"))).sort_values("dia")
+    datas = base["data_rotulo"].drop_duplicates().tolist()
+    rotulos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
+    cor_linhas = ["#1D4ED8", "#0284C7", "#4338CA", "#0891B2", "#2563EB", "#64748B"]
+    fig = go.Figure()
+    for ordem, pid in enumerate(ponto_ids):
+        serie = base[base["ponto_id"] == int(pid)]
+        if serie.empty:
+            continue
+        cor = cor_linhas[ordem % len(cor_linhas)]
+        exibir_valores = len(base) <= 15
+        fig.add_trace(go.Scatter(
+            x=serie["data_rotulo"], y=serie["valor"],
+            mode="lines+markers+text" if exibir_valores else "lines+markers",
+            name=rotulos.get(int(pid), str(pid)),
+            line=dict(color=cor, width=2),
+            marker=dict(color=cor, size=9, line=dict(color="white", width=1.5)),
+            text=[formatar_valor(v) for v in serie["valor"]] if exibir_valores else None,
+            textposition="top center", textfont=dict(color=cor, size=11),
+            cliponaxis=False,
+            hovertemplate="%{fullData.name}<br>%{x}<br><b>%{y:.5f}</b><extra></extra>",
+        ))
+    unidade = str(parametros.loc[parametros["id"] == int(parametro_id), "unidade"].iloc[0])
+    if unidade == "-":
+        unidade = ""
+    _layout_eixo_coletas(fig, datas, altura=355, eixo_y=unidade)
+    valores = base["valor"].astype(float)
+    vmin, vmax = float(valores.min()), float(valores.max())
+    folga = max((vmax-vmin)*0.15, abs(vmax)*0.09, 0.3)
+    fig.update_yaxes(range=[min(0, vmin-folga) if vmin >= 0 else vmin-folga, vmax+folga*1.5])
+    fig.update_layout(showlegend=True,
+                      legend=dict(orientation="h", y=1.18, x=0),
+                      margin=dict(l=14, r=35, t=45, b=38))
+    st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
 
-def senha_admin():
-    senha = os.environ.get("ADMIN_PASSWORD", "")
-    if senha:
-        return senha
+def credenciais_admin():
+    """Lê as credenciais dos Streamlit Secrets, sem expor senha no repositório."""
+    usuario = senha = ""
     try:
-        senha_secret = st.secrets.get("ADMIN_PASSWORD", "")
-        if senha_secret:
-            return senha_secret
+        usuario = st.secrets.get("ADMIN_USER", "")
+        senha = st.secrets.get("ADMIN_PASSWORD", "")
     except (FileNotFoundError, KeyError):
         pass
-    return "1234"
+    # Variáveis de ambiente ficam como alternativa para deploys fora do Streamlit Cloud.
+    usuario = usuario or os.environ.get("ADMIN_USER", "")
+    senha = senha or os.environ.get("ADMIN_PASSWORD", "")
+    return str(usuario).strip(), str(senha)
 
 
 def cabecalho_publico():
@@ -668,7 +831,8 @@ def cabecalho_publico():
     with esquerda:
         st.markdown(marca(), unsafe_allow_html=True)
     with direita:
-        if st.button("Administração", key="entrar_admin", use_container_width=True):
+        if st.button(" ", icon=":material/person:", help="Acesso administrativo",
+                     key="entrar_admin", use_container_width=False):
             st.session_state.pagina = "login" if not st.session_state.autenticado else "admin"
             st.rerun()
     st.divider()
@@ -683,16 +847,20 @@ def tela_login():
     with meio:
         with st.container(border=True):
             st.subheader("Acesso administrativo")
-            senha_config = senha_admin()
+            usuario_config, senha_config = credenciais_admin()
+            if not usuario_config or not senha_config:
+                st.error("Configure ADMIN_USER e ADMIN_PASSWORD nos Secrets do Streamlit para habilitar o login.")
             restante = max(0, int(st.session_state.bloqueio_ate - time.monotonic()))
             if restante:
                 st.warning(f"Tente novamente em {restante} segundos.")
             with st.form("login_admin"):
+                usuario_informado = st.text_input("Usuário", autocomplete="username")
                 senha_informada = st.text_input("Senha", type="password", autocomplete="current-password")
                 enviar = st.form_submit_button("Entrar", type="primary", use_container_width=True,
-                                               disabled=restante > 0)
+                                               disabled=restante > 0 or not (usuario_config and senha_config))
             if enviar:
-                if hmac.compare_digest(senha_informada, senha_config):
+                if (hmac.compare_digest(usuario_informado.strip(), usuario_config)
+                        and hmac.compare_digest(senha_informada, senha_config)):
                     st.session_state.autenticado = True
                     st.session_state.pagina = "admin"
                     st.session_state.falhas_login = 0
@@ -718,7 +886,6 @@ def painel_publico():
     faixas = db.buscar_faixas_iqa()
 
     cabecalho_publico()
-    st.markdown('<div class="eyebrow">Monitoramento ambiental · Campus Florianópolis</div>', unsafe_allow_html=True)
     st.title("Qualidade da água nos córregos da UFSC")
     st.markdown('<div class="lead">Veja o mapa dos pontos, acompanhe o IQA e compare campanhas, parâmetros e locais de coleta.</div>', unsafe_allow_html=True)
     st.write("")
@@ -735,129 +902,171 @@ def painel_publico():
         st.info("Nenhum ponto ativo cadastrado.")
         return
 
-    # Seleção da campanha para mapa, distribuição e comparação entre pontos.
+    # Um único filtro de campanha governa o panorama e os gráficos comparativos.
     campanha_opcoes = campanhas if campanhas else [None]
     if st.session_state.get("campanha_publica") not in campanha_opcoes:
         st.session_state.campanha_publica = campanha_opcoes[0]
     st.write("")
-    with st.container(border=True):
-        titulo_secao("Panorama da campanha", "Selecione uma data para atualizar o mapa e os resumos da campanha.")
-        col_data, col_resumo1, col_resumo2 = st.columns([1.2, .7, .7])
-        with col_data:
-            campanha_sel = st.selectbox(
-                "Campanha de coleta",
-                campanha_opcoes,
-                key="campanha_publica",
-                format_func=lambda d: "Sem dados" if d is None else d.strftime("%d/%m/%Y")
-            )
-        campanha_df = resultados[resultados["dia"] == campanha_sel].copy() if campanha_sel is not None and not resultados.empty else resultados.iloc[0:0].copy()
-        resumo_iqa = obter_iqa_por_ponto(campanha_df, faixas)
-        with col_resumo1:
-            st.metric("Pontos amostrados", int(campanha_df["ponto_id"].nunique()) if not campanha_df.empty else 0)
-        with col_resumo2:
-            st.metric("Pontos com IQA", int(resumo_iqa["ponto_id"].nunique()) if not resumo_iqa.empty else 0)
+    topo_esq, topo_dir = st.columns([1, 2.5], vertical_alignment="bottom")
+    with topo_esq:
+        campanha_sel = st.selectbox(
+            "Campanha de coleta", campanha_opcoes, key="campanha_publica",
+            format_func=lambda d: "Sem dados" if d is None else d.strftime("%d/%m/%Y"),
+        )
+    campanha_df = (resultados[resultados["dia"] == campanha_sel].copy()
+                   if campanha_sel is not None and not resultados.empty else resultados.iloc[0:0].copy())
+    resumo_iqa = obter_iqa_por_ponto(campanha_df, faixas)
+    with topo_dir:
+        n_pontos = int(campanha_df["ponto_id"].nunique()) if not campanha_df.empty else 0
+        n_iqa = len(resumo_iqa)
+        st.markdown(
+            f'<div class="campaign-kpis"><span><strong>{n_pontos}</strong> pontos amostrados</span>'
+            f'<span><strong>{n_iqa}</strong> com IQA</span></div>',
+            unsafe_allow_html=True,
+        )
 
-        mapa_col, painel_col = st.columns([1.6, 1], gap="large")
-        pontos_mapa = pontos.copy()
-        ids = pontos_mapa["id"].astype(int).tolist()
-        if st.session_state.get("ponto_publico") not in ids:
-            st.session_state.ponto_publico = ids[0]
-        estilos, popups, resumo_iqa = estilos_mapa_por_campanha(pontos_mapa, campanha_df, faixas)
-        with mapa_col:
-            titulo_secao("Mapa dos Pontos", "As cores seguem a classificação do IQA na campanha selecionada.")
-            escolhido_mapa = cartografia(
-                pontos_mapa, foco_id=st.session_state.ponto_publico,
-                chave="mapa_publico", altura=430,
-                estilos_por_ponto=estilos, popup_por_ponto=popups,
-            )
-            if escolhido_mapa is not None and escolhido_mapa != st.session_state.ponto_publico:
-                st.session_state.ponto_publico = escolhido_mapa
-                st.rerun()
-        with painel_col:
-            titulo_secao("Classificação do IQA", "Distribuição dos pontos com IQA na campanha escolhida.")
+    titulo_secao("Mapa dos Pontos")
+    mapa_col, painel_col = st.columns([1.8, 1], gap="medium")
+    pontos_mapa = pontos.copy()
+    ids = pontos_mapa["id"].astype(int).tolist()
+    if st.session_state.get("ponto_publico") not in ids:
+        st.session_state.ponto_publico = ids[0]
+    estilos, popups, resumo_iqa = estilos_mapa_por_campanha(pontos_mapa, campanha_df, faixas)
+    with mapa_col:
+        escolhido_mapa = cartografia(
+            pontos_mapa, foco_id=st.session_state.ponto_publico,
+            chave="mapa_publico", altura=405,
+            estilos_por_ponto=estilos, popup_por_ponto=popups,
+        )
+        if escolhido_mapa is not None and escolhido_mapa != st.session_state.ponto_publico:
+            st.session_state.ponto_publico = escolhido_mapa
+            st.rerun()
+    with painel_col:
+        with st.container(border=True):
+            titulo_secao("Classificação do IQA")
             grafico_distribuicao_iqa(campanha_df, faixas)
-            sem_iqa = max(int(campanha_df["ponto_id"].nunique()) - int(resumo_iqa["ponto_id"].nunique() if not resumo_iqa.empty else 0), 0)
-            st.caption(f"Sem IQA informado na campanha: {sem_iqa} ponto(s).")
+            st.caption("Cores dos pontos no mapa: classificação do IQA; cinza significa sem IQA na data.")
 
+    nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
+    outros_parametros = parametros[~parametros["nome"].apply(somente_iqa)]
+    todas_medicoes = resultados[~resultados["parametro"].apply(somente_iqa)].copy()
+    ids_parametros = outros_parametros[
+        outros_parametros["id"].isin(todas_medicoes["param_id"].dropna().astype(int))
+    ]["id"].astype(int).tolist() if not todas_medicoes.empty else []
+
+    # 1 — Evolução temporal de um único ponto para o parâmetro escolhido.
     st.write("")
     with st.container(border=True):
-        titulo_secao("Cobertura das campanhas", "Quantos pontos e parâmetros foram registrados em cada data.")
-        grafico_cobertura_campanhas(resultados)
-
-    st.write("")
-    with st.container(border=True):
-        titulo_secao("Comparação entre pontos", "Escolha um parâmetro e compare os locais que tiveram medição na campanha selecionada.")
-        params_camp = campanha_df[~campanha_df["parametro"].apply(somente_iqa)] if not campanha_df.empty else campanha_df
-        param_ids = params_camp["param_id"].dropna().astype(int).drop_duplicates().tolist()
-        if param_ids:
-            if st.session_state.get("parametro_campanha_publico") not in param_ids:
-                st.session_state.parametro_campanha_publico = param_ids[0]
-            st.selectbox("Parâmetro da campanha", param_ids,
-                         format_func=lambda pid: parametros.loc[parametros["id"] == pid, "nome"].iloc[0],
-                         key="parametro_campanha_publico")
-            grafico_comparacao_parametro(campanha_df, st.session_state.parametro_campanha_publico, parametros, pontos)
-        else:
-            st.info("A campanha selecionada ainda não possui parâmetros comparáveis entre pontos.")
-
-    st.write("")
-    with st.container(border=True):
-        titulo_secao("Comparação temporal do IQA", "Compare a trajetória de até 6 pontos ao longo das campanhas.")
-        iqa_base = resultados[resultados["parametro"].astype(str).str.startswith("IQA (", na=False)].copy()
-        ids_iqa = iqa_base["ponto_id"].dropna().astype(int).drop_duplicates().tolist()
-        nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
-        default_points = [st.session_state.ponto_publico] if st.session_state.ponto_publico in ids_iqa else ids_iqa[:1]
-        for pid in ids_iqa:
-            if len(default_points) >= min(4, len(ids_iqa)):
-                break
-            if pid not in default_points:
-                default_points.append(pid)
-        comparar = st.multiselect("Pontos para comparar", options=ids_iqa, default=default_points,
-                                  format_func=lambda pid: nomes_pontos.get(pid, str(pid)), max_selections=6,
-                                  key="comparar_iqa_publico")
-        if comparar:
-            grafico_comparacao_iqa_multiplos(resultados, comparar, pontos, faixas, foco_id=st.session_state.ponto_publico)
-        else:
-            st.info("Selecione ao menos um ponto para comparar o IQA.")
-
-    st.write("")
-    with st.container(border=True):
-        titulo_secao("Evolução dos parâmetros por ponto", "Escolha um ponto e acompanhe a evolução de um parâmetro e do IQA.")
-        col_ponto, col_param = st.columns([1.2, 1.4])
-        nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
-        with col_ponto:
-            st.selectbox("Ponto de coleta", ids, format_func=lambda pid: nomes_pontos[pid], key="ponto_publico")
-        ponto_id = st.session_state.ponto_publico
-        dados_pt = resultados[resultados["ponto_id"] == ponto_id].copy()
-        outros = parametros[~parametros["nome"].apply(somente_iqa)]
-        ids_marcados = set(dados_pt["param_id"].dropna().astype(int)) if not dados_pt.empty else set()
-        disponiveis = outros[outros["id"].isin(ids_marcados)]
-        param_ids = disponiveis["id"].astype(int).tolist()
-        with col_param:
-            if param_ids:
-                if st.session_state.get("parametro_publico") not in param_ids:
-                    st.session_state.parametro_publico = param_ids[0]
-                st.selectbox("Parâmetro", param_ids,
-                             format_func=lambda pid: disponiveis.loc[disponiveis["id"] == pid, "nome"].iloc[0],
-                             key="parametro_publico")
+        titulo_secao("Evolução dos parâmetros por ponto")
+        if ids_parametros:
+            filtro_param, filtro_ponto = st.columns([1.2, 1.8])
+            with filtro_param:
+                if st.session_state.get("parametro_temporal_individual") not in ids_parametros:
+                    st.session_state.parametro_temporal_individual = ids_parametros[0]
+                parametro_individual = st.selectbox(
+                    "Parâmetro", ids_parametros,
+                    format_func=lambda pid: outros_parametros.loc[
+                        outros_parametros["id"] == pid, "nome"].iloc[0],
+                    key="parametro_temporal_individual")
+            pontos_disponiveis = set(todas_medicoes.loc[
+                todas_medicoes["param_id"] == parametro_individual, "ponto_id"].dropna().astype(int))
+            ids_disponiveis = [int(pid) for pid in ids if int(pid) in pontos_disponiveis]
+            with filtro_ponto:
+                if ids_disponiveis:
+                    if st.session_state.get("ponto_parametro_individual") not in ids_disponiveis:
+                        st.session_state.ponto_parametro_individual = ids_disponiveis[0]
+                    ponto_individual = st.selectbox(
+                        "Ponto de coleta", ids_disponiveis,
+                        format_func=lambda pid: nomes_pontos[pid],
+                        key="ponto_parametro_individual")
+            if ids_disponiveis:
+                parametro_config = parametros.loc[parametros["id"] == parametro_individual].iloc[0]
+                serie = todas_medicoes[
+                    (todas_medicoes["param_id"] == parametro_individual) &
+                    (todas_medicoes["ponto_id"] == ponto_individual)]
+                grafico_temporal(serie, parametro_config["nome"], parametro_config)
             else:
-                st.selectbox("Parâmetro", ["Sem medições"], disabled=True, key="parametro_sem_medicoes")
+                st.info("Não há medições para esse parâmetro.")
+        else:
+            st.info("Ainda não há resultados de parâmetros.")
 
-        g1, g2 = st.columns(2, gap="large")
-        with g1:
-            titulo_secao("Evolução do parâmetro")
-            if param_ids:
-                param = disponiveis.loc[disponiveis["id"] == st.session_state.parametro_publico].iloc[0]
-                serie = dados_pt[dados_pt["param_id"] == st.session_state.parametro_publico]
-                grafico_temporal(serie, param["nome"], param)
+    # 2 — IQA de um único ponto.
+    st.write("")
+    with st.container(border=True):
+        titulo_secao("Evolução do IQA por ponto")
+        ids_com_iqa = resultados.loc[
+            resultados["parametro"].astype(str).str.startswith("IQA (", na=False), "ponto_id"
+        ].dropna().astype(int).drop_duplicates().tolist()
+        ids_com_iqa = [pid for pid in ids if pid in ids_com_iqa]
+        if ids_com_iqa:
+            if st.session_state.get("ponto_iqa_individual") not in ids_com_iqa:
+                st.session_state.ponto_iqa_individual = ids_com_iqa[0]
+            st.selectbox("Ponto de coleta", ids_com_iqa,
+                         format_func=lambda pid: nomes_pontos[pid], key="ponto_iqa_individual")
+            dados_iqa_ponto = resultados[resultados["ponto_id"] == st.session_state.ponto_iqa_individual]
+            grafico_iqa(dados_iqa_ponto[dados_iqa_ponto["parametro"].apply(somente_iqa)], faixas)
+        else:
+            st.info("Ainda não existem valores de IQA registrados para os pontos.")
+
+    # 3 — Comparação do IQA de vários pontos ao longo do tempo.
+    st.write("")
+    with st.container(border=True):
+        titulo_secao("Comparação temporal do IQA")
+        if ids_com_iqa:
+            selecionados_atuais = st.session_state.get("comparar_iqa_publico", [])
+            if any(int(x) not in ids_com_iqa for x in selecionados_atuais):
+                st.session_state.comparar_iqa_publico = [int(x) for x in selecionados_atuais if int(x) in ids_com_iqa]
+            default_iqa = ids_com_iqa[:min(3, len(ids_com_iqa))]
+            comparar = st.multiselect(
+                "Pontos para comparar", options=ids_com_iqa,
+                default=default_iqa if "comparar_iqa_publico" not in st.session_state else None,
+                format_func=lambda pid: nomes_pontos.get(pid, str(pid)), max_selections=6,
+                key="comparar_iqa_publico", placeholder="Selecione os pontos")
+            if comparar:
+                grafico_comparacao_iqa_multiplos(resultados, comparar, pontos, faixas,
+                                                 foco_id=st.session_state.get("ponto_publico"))
             else:
-                st.info("Nenhum resultado de parâmetro para este ponto.")
-        with g2:
-            titulo_secao("Histórico do IQA do ponto")
-            serie_iqa = dados_pt[dados_pt["parametro"].astype(str).str.startswith("IQA (", na=False)]
-            grafico_iqa(serie_iqa, faixas)
+                st.info("Selecione ao menos um ponto para comparar o IQA.")
+        else:
+            st.info("Ainda não há resultados de IQA para comparação.")
+
+    # 4 — Evolução temporal do mesmo parâmetro entre diversos pontos.
+    # Cada série contém apenas suas próprias datas de coleta; não inventar valores ausentes.
+    st.write("")
+    with st.container(border=True):
+        titulo_secao("Comparativo de parâmetros entre pontos")
+        if ids_parametros:
+            if st.session_state.get("parametro_temporal_comparado") not in ids_parametros:
+                st.session_state.parametro_temporal_comparado = ids_parametros[0]
+            parametro_comp = st.selectbox(
+                "Parâmetro", ids_parametros,
+                format_func=lambda pid: outros_parametros.loc[
+                    outros_parametros["id"] == pid, "nome"].iloc[0],
+                key="parametro_temporal_comparado")
+            ids_presentes = set(todas_medicoes.loc[
+                todas_medicoes["param_id"] == parametro_comp, "ponto_id"].dropna().astype(int))
+            ids_disponiveis = [int(pid) for pid in ids if int(pid) in ids_presentes]
+            atuais = st.session_state.get("pontos_parametros_comparados", [])
+            if any(int(x) not in ids_disponiveis for x in atuais):
+                st.session_state.pontos_parametros_comparados = [
+                    int(x) for x in atuais if int(x) in ids_disponiveis]
+            default = ids_disponiveis[:min(3, len(ids_disponiveis))]
+            comparar_param = st.multiselect(
+                "Pontos para comparar", ids_disponiveis,
+                default=default if "pontos_parametros_comparados" not in st.session_state else None,
+                format_func=lambda pid: nomes_pontos[pid],
+                key="pontos_parametros_comparados", max_selections=6,
+                placeholder="Selecione os pontos")
+            if comparar_param:
+                grafico_temporal_parametros_multiplos(
+                    resultados, parametro_comp, comparar_param, pontos, parametros)
+            else:
+                st.info("Selecione pelo menos um ponto.")
+        else:
+            st.info("Ainda não há resultados de parâmetros.")
 
     if not resultados.empty:
-        exportar = resultados[resultados["ponto_id"] == st.session_state.ponto_publico].copy()
+        exportar = resultados[resultados["ponto_id"] == st.session_state.get("ponto_iqa_individual", st.session_state.ponto_publico)].copy()
         st.download_button("Baixar histórico do ponto (CSV)",
                            exportar.to_csv(index=False, sep=";").encode("utf-8-sig"),
                            "historico_aguas_ufsc.csv", "text/csv", type="secondary")
@@ -1007,6 +1216,73 @@ def _validar_resultados_semanticos(parametros, valores):
             raise ValueError(f"{row['nome']} não pode ter valor negativo.")
 
 
+def _interpretar_valor_planilha(celula):
+    """Converte número brasileiro; rejeita valores ambíguos e textos."""
+    import re
+    valor = str(celula).strip().replace("\u00a0", "").replace(" ", "")
+    if valor in ("", "-", "—"):
+        return None
+    # Exemplos aceitos: 3,22 | 5.800,00 | 400,5 | 156 | 26.5
+    if re.fullmatch(r"[+-]?\d{1,3}(?:\.\d{3})+(?:,\d+)?", valor):
+        normalizado = valor.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"[+-]?\d+(?:,\d+)?", valor):
+        normalizado = valor.replace(",", ".")
+    elif re.fullmatch(r"[+-]?\d+\.\d+", valor):
+        normalizado = valor
+    else:
+        raise ValueError(f"Valor inválido: {celula}")
+    numero = float(normalizado)
+    if not math.isfinite(numero):
+        raise ValueError("Valores infinitos ou NaN não são permitidos.")
+    return numero
+
+
+def _processar_coluna_laboratorio(texto_colado, parametros_analise):
+    """Retorna valores e conferência. Nunca associa lista incompleta silenciosamente."""
+    linhas = texto_colado.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    while linhas and not linhas[-1].strip():
+        linhas.pop()
+    qtd = len(linhas)
+    total = len(parametros_analise)
+    if qtd == 0:
+        return {}, [], "Cole os valores para visualizar a conferência."
+    if any("\t" in linha for linha in linhas):
+        return {}, [], "Copie apenas uma coluna da planilha, sem outras colunas."
+    tamanhos_validos = {total}
+    # A planilha padronizada original contém 12 valores. Campos novos ficam vazios.
+    if total >= 12:
+        tamanhos_validos.add(12)
+    aviso = ""
+    if qtd not in tamanhos_validos:
+        aviso = (f"Foram coladas {qtd} linhas. Use 12 linhas na ordem original "
+                 f"ou {total} linhas para incluir os parâmetros novos. "
+                 "Para deixar um resultado sem medição, mantenha a linha vazia no local correto.")
+    valores = {}
+    conferencia = []
+    for i, (_, par) in enumerate(parametros_analise.iterrows()):
+        texto = linhas[i].strip() if i < qtd else ""
+        valor = None
+        status = "Sem medição"
+        if texto:
+            try:
+                valor = _interpretar_valor_planilha(texto)
+                status = "OK" if valor is not None else "Sem medição"
+            except ValueError:
+                status = "Inválido"
+                aviso = aviso or "Corrija os valores inválidos antes de salvar."
+        if valor is not None:
+            valores[int(par["id"])] = valor
+        conferencia.append({
+            "Ordem": i + 1,
+            "Parâmetro": str(par["nome"]),
+            "Valor colado": texto if texto else "—",
+            "Situação": status,
+        })
+    if not valores and not aviso:
+        aviso = "Informe pelo menos um resultado válido."
+    return valores, conferencia, aviso
+
+
 def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
     """Formulário com atualização responsiva dos campos e conferência pré-salvamento."""
     if pontos.empty or parametros.empty:
@@ -1041,22 +1317,73 @@ def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
                              for _, r in db.buscar_valores_amostra(amostra_id).iterrows()}
     # O IQA tem campo próprio; não depende da listagem dos parâmetros laboratoriais.
     iqa_cadastrados = parametros[parametros["nome"].apply(somente_iqa)]
-    parametros_analise = parametros[~parametros["nome"].apply(somente_iqa)]
+    parametros_analise = (parametros[~parametros["nome"].apply(somente_iqa)]
+                          .sort_values(["ordem_exibicao", "id"]))
     valores = {}
+    erro_colagem = ""
     with st.container(border=True):
         titulo_secao("2. Resultados da análise")
-        lista = list(parametros_analise.iterrows())
-        for i in range(0, len(lista), 2):
-            cols = st.columns(2)
-            for indice_coluna, (_, par) in enumerate(lista[i:i + 2]):
-                param_id = int(par["id"])
-                unidade = "" if par["unidade"] == "-" else f" · {par['unidade']}"
-                with cols[indice_coluna]:
+        modo = st.radio(
+            "Modo de preenchimento", ["Colar coluna da planilha", "Preenchimento individual"],
+            horizontal=True, key=f"{prefixo}_modo_preenchimento",
+            index=1 if amostra_id else 0,
+        )
+        coluna_entrada, coluna_conferencia = st.columns([1, 1.5], gap="large")
+        with coluna_entrada:
+            if modo == "Colar coluna da planilha":
+                st.caption("Copie a coluna de resultados do Excel. Cole 12 valores, na ordem do "
+                           "laboratório, um por linha. Parâmetros futuros ficam ao final.")
+                texto_colado = st.text_area(
+                    "Valores da planilha", key=f"{prefixo}_coluna_planilha", height=310,
+                    placeholder="3,22\n5.800,00\n3.100,00\n400,5\n...",
+                )
+                valores, conferencia, erro_colagem = _processar_coluna_laboratorio(
+                    texto_colado, parametros_analise
+                )
+                # A planilha de 12 linhas só pode ser mapeada quando os 12
+                # parâmetros originais estiverem ativos e na mesma sequência.
+                nomes_atuais = [str(n).strip().casefold() for n in parametros_analise["nome"]]
+                ordem_esperada = [nome.casefold() for nome in db.PARAMETROS_ORDEM_LAB]
+                if nomes_atuais[:12] != ordem_esperada:
+                    erro_colagem = ("A ordem padrão de 12 parâmetros não está completa ou "
+                                     "foi alterada no cadastro. Use preenchimento individual "
+                                     "até que o cadastro seja revisado.")
+                if erro_colagem and texto_colado.strip():
+                    st.error(erro_colagem)
+                elif not texto_colado.strip():
+                    st.info("Cole os valores para iniciar a conferência.")
+                elif not erro_colagem:
+                    st.success(f"{len(valores)} resultados reconhecidos.")
+            else:
+                st.caption("Preencha somente os parâmetros analisados; deixe os demais vazios.")
+                for _, par in parametros_analise.iterrows():
+                    param_id = int(par["id"])
+                    unidade = "" if par["unidade"] == "-" else f" · {par['unidade']}"
                     valores[param_id] = st.number_input(
                         f"{par['nome']}{unidade}", value=valores_existentes.get(param_id),
                         key=f"{prefixo}_valor_{param_id}", format="%.5f", step=0.00001,
                         placeholder="Não analisado",
                     )
+                conferencia = [
+                    {"Ordem": i + 1, "Parâmetro": str(par["nome"]),
+                     "Valor colado": (formatar_valor(valores[int(par["id"])])
+                                      if valores.get(int(par["id"])) is not None else "—"),
+                     "Situação": ("OK" if valores.get(int(par["id"])) is not None else "Sem medição")}
+                    for i, (_, par) in enumerate(parametros_analise.iterrows())
+                ]
+        with coluna_conferencia:
+            st.markdown("**Conferência dos resultados**")
+            st.caption("Confira a ordem de cada linha antes de registrar a coleta.")
+            st.dataframe(pd.DataFrame(conferencia, columns=[
+                "Ordem", "Parâmetro", "Valor colado", "Situação"
+            ]), hide_index=True, use_container_width=True, height=390)
+            st.caption("Novos parâmetros aparecem ao final. IQA é informado separadamente.")
+        confirmar_ordem = True
+        if modo == "Colar coluna da planilha":
+            confirmar_ordem = st.checkbox(
+                "Conferi a correspondência entre valores e parâmetros",
+                key=f"{prefixo}_conferir_ordem",
+            )
     with st.container(border=True):
         titulo_secao("3. Índice de Qualidade da Água (IQA)")
         if not iqa_cadastrados.empty:
@@ -1081,7 +1408,8 @@ def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
                        "os resultados anteriores desta amostra são substituídos.")
         with b:
             salvar = st.button("Salvar alterações" if amostra_id else "Salvar coleta",
-                               type="primary", key=f"{prefixo}_salvar", use_container_width=True)
+                               type="primary", key=f"{prefixo}_salvar", use_container_width=True,
+                               disabled=bool(erro_colagem) or not confirmar_ordem)
     if salvar:
         try:
             if duplicadas and not confirmar_mesma_data:
@@ -1138,14 +1466,70 @@ def admin_visao_geral(pontos, parametros, coletas, amostras):
         st.rerun()
     st.write("")
     with st.container(border=True):
-        titulo_secao("Coletas recentes")
+        titulo_secao("Coletas por data")
+        # A árvore parte das amostras registradas, sem supor que todos os pontos
+        # tenham coleta em todas as datas. Um ponto aparece uma vez por data.
         if amostras.empty:
             st.info("Ainda não há coletas cadastradas.")
         else:
-            resumo = amostras.head(8)[["data_amostra", "codigo", "local", "qtd_parametros"]].copy()
-            resumo["data_amostra"] = resumo["data_amostra"].map(formatar_data)
-            resumo.columns = ["Data", "Ponto", "Local", "Resultados"]
-            st.dataframe(resumo, hide_index=True, use_container_width=True)
+            registros = amostras.copy()
+            registros["dia"] = pd.to_datetime(registros["data_amostra"], errors="coerce").dt.date
+            registros = registros.dropna(subset=["dia"])
+            registros = registros[registros["qtd_parametros"].fillna(0) > 0]
+            if registros.empty:
+                st.info("Ainda não há coletas com medições registradas.")
+            else:
+                for dia in sorted(registros["dia"].unique(), reverse=True):
+                    desta_data = registros[registros["dia"] == dia].copy()
+                    pontos_data = desta_data.drop_duplicates(subset=["ponto_id"]).copy()
+                    pontos_data = pontos_data.sort_values(
+                        "codigo", key=lambda col: col.map(chave_ordenacao_ponto)
+                    )
+                    quantidade = len(pontos_data)
+                    n_amostras = len(desta_data)
+                    titulo_data = (
+                        f"{dia.strftime('%d/%m/%Y')}  ·  {quantidade} "
+                        f"{'ponto' if quantidade == 1 else 'pontos'}"
+                    )
+                    with st.expander(titulo_data, expanded=False):
+                        for _, ponto in pontos_data.iterrows():
+                            codigo = str(ponto["codigo"])
+                            local = str(ponto["local"])
+                            total_ponto = int(desta_data.loc[
+                                desta_data["ponto_id"] == ponto["ponto_id"], "qtd_parametros"
+                            ].sum())
+                            linha1, linha2 = st.columns([5, 1], vertical_alignment="center")
+                            linha1.markdown(
+                                f'<div style="padding:6px 0;font-size:13px">'
+                                f'<strong style="color:#1D4ED8">{txt(codigo)}</strong> · {txt(local)}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            linha2.caption(f"{total_ponto} resultados")
+                        # Um seletor permite abrir os resultados sem usar expanders aninhados.
+                        ids_data = pontos_data["ponto_id"].astype(int).tolist()
+                        nomes_data = {int(row["ponto_id"]): rotulo_ponto(row)
+                                      for _, row in pontos_data.iterrows()}
+                        escolhido = st.selectbox(
+                            "Ver resultados de um ponto", ids_data, index=None,
+                            placeholder="Selecione um ponto",
+                            format_func=lambda pid: nomes_data[pid],
+                            key=f"visao_geral_ponto_{dia.isoformat()}",
+                        )
+                        if escolhido is not None:
+                            amostras_ponto = desta_data[desta_data["ponto_id"] == escolhido]
+                            for _, amostra in amostras_ponto.iterrows():
+                                resultados_amostra = coletas[
+                                    coletas["amostra_id"] == int(amostra["id"])
+                                ].dropna(subset=["valor"])
+                                if resultados_amostra.empty:
+                                    continue
+                                if len(amostras_ponto) > 1:
+                                    st.caption(f"Amostra #{int(amostra['id'])}")
+                                tabela = resultados_amostra[["parametro", "valor", "unidade"]].copy()
+                                tabela["valor"] = tabela["valor"].map(formatar_valor)
+                                tabela["unidade"] = tabela["unidade"].replace("-", "")
+                                tabela.columns = ["Parâmetro", "Valor", "Unidade"]
+                                st.dataframe(tabela, hide_index=True, use_container_width=True)
     with st.container(border=True):
         titulo_secao("Qualidade e consistência do cadastro")
         pendentes = parametros[(parametros["limite_legal"].notna()) &
@@ -1184,6 +1568,53 @@ def editar_resultado_individual(resultado):
             st.rerun()
         except (ValueError, TypeError) as e:
             st.error(str(e))
+
+
+@st.dialog("Editar data da coleta", width="small", on_dismiss="rerun")
+def editar_data_amostra_dialogo(amostra_id, data_amostra, codigo, local):
+    """Altera somente a data da amostra, preservando todas as medições e o IQA."""
+    st.caption(f"{codigo} · {local}")
+    with st.form(f"form_editar_data_amostra_{int(amostra_id)}"):
+        nova_data = st.date_input(
+            "Data da coleta",
+            value=pd.to_datetime(data_amostra).date(),
+            max_value=date.today(),
+            format="DD/MM/YYYY",
+        )
+        salvar = st.form_submit_button(
+            "Salvar data", type="primary", use_container_width=True,
+        )
+    if salvar:
+        try:
+            db.atualizar_data_amostra(int(amostra_id), nova_data)
+            st.session_state.mensagem = "Data da coleta atualizada com sucesso."
+            st.rerun()
+        except (ValueError, TypeError) as exc:
+            st.error(str(exc))
+
+
+@st.dialog("IQA da coleta", width="small", on_dismiss="rerun")
+def editar_iqa_amostra(amostra_id, data_amostra, codigo, local, valor_atual=None):
+    """Permite incluir IQA ausente ou atualizar o resultado já registrado."""
+    st.caption(f"{formatar_data(data_amostra)} · {codigo} · {local}")
+    with st.form(f"form_iqa_amostra_{int(amostra_id)}"):
+        iqa = st.number_input(
+            "Valor do IQA (0 a 100)", min_value=0.0, max_value=100.0,
+            value=float(valor_atual) if valor_atual is not None else None,
+            step=0.1, format="%.2f", placeholder="Informe o IQA",
+        )
+        salvar = st.form_submit_button(
+            "Salvar IQA", type="primary", use_container_width=True,
+        )
+    if salvar:
+        try:
+            if iqa is None:
+                raise ValueError("Informe o valor do IQA antes de salvar.")
+            db.salvar_iqa_amostra(amostra_id, iqa)
+            st.session_state.mensagem = "IQA salvo com sucesso."
+            st.rerun()
+        except (ValueError, TypeError) as exc:
+            st.error(str(exc))
 
 
 def chave_ordenacao_ponto(codigo):
@@ -1242,11 +1673,35 @@ def admin_coletas(pontos, parametros, amostras, coletas):
                     if len(amostras_pt) > 1:
                         st.caption(f"Amostra #{id_amostra}")
                     with st.container(border=True):
+                        amostra_info = amostras.loc[
+                            amostras["id"].astype(int) == int(id_amostra)
+                        ].iloc[0]
+                        linha_data = st.columns([4, 1.1], vertical_alignment="center")
+                        linha_data[0].caption(
+                            f"Data da coleta: {formatar_data(amostra_info['data_amostra'])}"
+                        )
+                        if linha_data[1].button(
+                            "Editar data",
+                            key=f"editar_data_amostra_{int(id_amostra)}",
+                            use_container_width=True,
+                        ):
+                            editar_data_amostra_dialogo(
+                                int(id_amostra), amostra_info["data_amostra"],
+                                str(amostra_info["codigo"]), str(amostra_info["local"]),
+                            )
                         cab = st.columns([4, 1.8, 1.1], vertical_alignment="center")
                         cab[0].caption("PARÂMETRO")
                         cab[1].caption("VALOR")
                         cab[2].caption("AÇÃO")
-                        for _, medicao in resultados_amostra.sort_values("parametro").iterrows():
+                        # IQA faz parte do histórico, mas também pode ser inserido
+                        # posteriormente, mesmo quando não constava na coleta original.
+                        iqa_existente = resultados_amostra[
+                            resultados_amostra["parametro"].apply(somente_iqa)
+                        ]
+                        outros_resultados = resultados_amostra[
+                            ~resultados_amostra["parametro"].apply(somente_iqa)
+                        ]
+                        for _, medicao in outros_resultados.sort_values("parametro").iterrows():
                             c1, c2, c3 = st.columns([4, 1.8, 1.1], vertical_alignment="center")
                             c1.write(medicao["parametro"])
                             unidade = str(medicao.get("unidade") or "")
@@ -1255,15 +1710,31 @@ def admin_coletas(pontos, parametros, amostras, coletas):
                             if c3.button("Editar", key=f"editar_valor_{int(medicao['id'])}",
                                          use_container_width=True):
                                 editar_resultado_individual(medicao.to_dict())
+                        coluna_nome, coluna_valor, coluna_acao = st.columns(
+                            [4, 1.8, 1.1], vertical_alignment="center"
+                        )
+                        coluna_nome.write("**IQA (Índice de Qualidade da Água)**")
+                        valor_iqa = (float(iqa_existente.iloc[0]["valor"])
+                                     if not iqa_existente.empty else None)
+                        coluna_valor.write(formatar_valor(valor_iqa) if valor_iqa is not None else "Não informado")
+                        rotulo_acao = "Editar IQA" if valor_iqa is not None else "Inserir IQA"
+                        if coluna_acao.button(
+                            rotulo_acao, key=f"gerenciar_iqa_{int(id_amostra)}",
+                            use_container_width=True,
+                        ):
+                            referencia = resultados_amostra.iloc[0]
+                            editar_iqa_amostra(
+                                int(id_amostra), referencia["data_amostra"],
+                                referencia["codigo"], referencia["local"], valor_iqa,
+                            )
 
 
 def admin_pontos(pontos):
     st.title("Pontos de coleta")
-    st.caption("Cadastre localizações geográficas, edite informações e arquive pontos inativos.")
-    col_t, col_b = st.columns([3, 1], vertical_alignment="center")
+    col_t, col_b = st.columns([5.5, 1], vertical_alignment="center")
     with col_t:
         titulo_secao("Pontos cadastrados", f"{len(pontos)} registros no banco de dados")
-    if col_b.button("+ Novo ponto", type="primary", use_container_width=True):
+    if col_b.button("+ Novo ponto", type="secondary", use_container_width=True, key="novo_ponto_admin"):
         st.session_state.editor_ponto_token = None
         formulario_ponto()
     with st.expander('Importar pontos UTM (CSV)', expanded=False):
@@ -1323,10 +1794,9 @@ def admin_pontos(pontos):
 
 def admin_parametros(parametros):
     st.title("Parâmetros ambientais")
-    st.caption("Gerencie unidades e referências legais contextualizadas para os parâmetros monitorados.")
     col_t, col_b = st.columns([3, 1], vertical_alignment="center")
     with col_t:
-        titulo_secao("Parâmetros cadastrados", "Somente referências revisadas são utilizadas na consulta pública.")
+        titulo_secao("Parâmetros cadastrados")
     if col_b.button("+ Novo parâmetro", type="primary", use_container_width=True):
         formulario_parametro()
     busca, inativos = st.columns([3, 1], vertical_alignment="bottom")
@@ -1433,6 +1903,20 @@ def painel_admin():
         admin_parametros(parametros)
     elif menu == opcoes[4]:
         admin_iqa(faixas, config, parametros)
+
+
+# Inicialize a sessão antes de acessar suas propriedades. No Streamlit,
+# cada navegador/sessão começa com um estado independente.
+VALORES_INICIAIS_SESSAO = {
+    "pagina": "publico",
+    "autenticado": False,
+    "admin_menu": "Visão geral",
+    "falhas_login": 0,
+    "bloqueio_ate": 0.0,
+}
+for chave, padrao in VALORES_INICIAIS_SESSAO.items():
+    if chave not in st.session_state:
+        st.session_state[chave] = padrao
 
 
 # Proteção de rota: jamais renderizar a administração sem autenticação.
