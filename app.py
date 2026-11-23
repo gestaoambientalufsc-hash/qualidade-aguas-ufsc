@@ -1123,8 +1123,26 @@ def gerar_relatorio_excel_ponto(linhas, nome_ponto, data_coleta, titulo_referenc
     return arquivo.getvalue()
 
 
+def estilo_situacao_resumo(valor):
+    """Aplica cores somente à célula da situação; não modifica os dados."""
+    cores = {
+        "na referência": ("#DCFCE7", "#166534"),
+        "fora da referência": ("#FEE2E2", "#991B1B"),
+        "sem referência": ("#F1F5F9", "#64748B"),
+        "não analisado": ("#F1F5F9", "#64748B"),
+        "não informado": ("#F1F5F9", "#64748B"),
+        "péssima": ("#FEE2E2", "#991B1B"),
+        "ruim": ("#FFEDD5", "#9A3412"),
+        "regular": ("#FEF3C7", "#854D0E"),
+        "boa": ("#DCFCE7", "#166534"),
+        "ótima": ("#D1FAE5", "#065F46"),
+    }
+    fundo, texto = cores.get(str(valor).strip().casefold(), ("#F1F5F9", "#475569"))
+    return f"background-color: {fundo}; color: {texto}; font-weight: 600;"
+
+
 def exibir_resumo_analises_ponto(campanha_df, pontos, faixas, data_campanha):
-    """Tabela completa do ponto para a campanha atual, sem escritas no banco."""
+    """Tabela por ponto e campanha, com apresentação e exportação somente de leitura."""
     with st.container(border=True):
         titulo_secao("Resumo das análises do ponto",
                      "Resultados laboratoriais, referência configurada e situação por parâmetro.")
@@ -1137,13 +1155,26 @@ def exibir_resumo_analises_ponto(campanha_df, pontos, faixas, data_campanha):
             st.info("Esta campanha não possui resultados para os pontos disponíveis.")
             return
         rotulos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
-        selecionado = st.session_state.get("resumo_ponto_publico")
-        if selecionado not in ids_campanha:
+        if st.session_state.get("resumo_ponto_publico") not in ids_campanha:
             st.session_state.resumo_ponto_publico = ids_campanha[0]
-        col_ponto, col_data = st.columns([3, 1], vertical_alignment="bottom")
-        ponto = col_ponto.selectbox("Ponto de coleta", ids_campanha, key="resumo_ponto_publico",
-                                      format_func=lambda pid: rotulos[pid])
-        col_data.metric("Data da campanha", formatar_data(data_campanha))
+
+        # Filtros no início da seção, alinhados e sem espaço vertical excessivo.
+        col_ponto, col_data = st.columns([3, 1], gap="medium", vertical_alignment="bottom")
+        with col_ponto:
+            ponto = st.selectbox("Ponto de coleta", ids_campanha,
+                                 key="resumo_ponto_publico",
+                                 format_func=lambda pid: rotulos[pid])
+        with col_data:
+            st.markdown(
+                '<div style="border:1px solid #DCE5EA;border-radius:9px;'
+                'background:#FFFFFF;padding:8px 12px;margin-bottom:1px;">'
+                '<div style="font-size:11px;color:#64748B;margin-bottom:2px;">'
+                'Data da campanha</div>'
+                f'<div style="font-size:18px;font-weight:650;color:#17324D;">'
+                f'{html.escape(formatar_data(data_campanha))}</div></div>',
+                unsafe_allow_html=True,
+            )
+
         med = campanha_df[campanha_df["ponto_id"] == ponto]
         ids_amostras = med["amostra_id"].dropna().astype(int).drop_duplicates().tolist()
         if not ids_amostras:
@@ -1157,7 +1188,15 @@ def exibir_resumo_analises_ponto(campanha_df, pontos, faixas, data_campanha):
             amostra_id = ids_amostras[0]
         dados_amostra = med[med["amostra_id"] == amostra_id]
         titulo = buscar_titulo_referencia_seguro()
-        st.caption(f"**Referência informada:** {titulo}")
+        st.markdown(
+            '<div style="border-left:4px solid #2563EB;background:#EFF6FF;'
+            'padding:12px 16px;border-radius:9px;margin:5px 0 12px;">'
+            '<div style="color:#1D4ED8;font-size:11px;font-weight:700;'
+            'text-transform:uppercase;letter-spacing:.055em;">Referência normativa</div>'
+            f'<div style="color:#17324D;font-size:15px;font-weight:650;'
+            f'margin-top:3px;">{html.escape(str(titulo))}</div></div>',
+            unsafe_allow_html=True,
+        )
         catalogo = db.buscar_parametros()  # inclui arquivados para preservar histórico
         linhas = montar_resumo_ponto(dados_amostra, catalogo, faixas)
         tabela = pd.DataFrame([{
@@ -1167,8 +1206,9 @@ def exibir_resumo_analises_ponto(campanha_df, pontos, faixas, data_campanha):
             "Referência": linha["referencia"],
             "Situação": linha["situacao"],
         } for linha in linhas])
-        st.dataframe(tabela, hide_index=True, use_container_width=True,
-                     height=min(650, 40+35*len(tabela)))
+        tabela_estilizada = tabela.style.map(estilo_situacao_resumo, subset=["Situação"])
+        st.dataframe(tabela_estilizada, hide_index=True, use_container_width=True,
+                     height=min(650, 40 + 35 * len(tabela)))
         st.caption("'Na referência' ou 'Fora da referência' indica apenas comparação numérica "
                    "com limites cadastrados e validados; não substitui análise legal de enquadramento.")
         nome_arquivo = f"analises_ufsc_ponto_{ponto}_{data_campanha.isoformat()}"
@@ -1178,13 +1218,13 @@ def exibir_resumo_analises_ponto(campanha_df, pontos, faixas, data_campanha):
                 "Baixar relatório formatado (Excel)",
                 data=gerar_relatorio_excel_ponto(linhas, rotulos[ponto], data_campanha,
                                                  titulo, amostra_id),
-                file_name=nome_arquivo+".xlsx",
+                file_name=nome_arquivo + ".xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True, type="primary")
         with c2:
             st.download_button("Baixar dados (CSV)",
                 data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
-                file_name=nome_arquivo+".csv", mime="text/csv",
+                file_name=nome_arquivo + ".csv", mime="text/csv",
                 use_container_width=True)
 
 
