@@ -18,6 +18,22 @@ import pandas as pd
 
 DB_NAME = os.getenv("AGUAS_DB_PATH", "aguas_ufsc.db")
 
+# Ordem da tabela original do laboratório (novos parâmetros entram ao final).
+PARAMETROS_ORDEM_LAB = (
+    'Carbono Orgânico Total',
+    'Coliforme Total',
+    'Coliformes Termotolerantes',
+    'Condutividade Eletrolítica',
+    'DBO',
+    'Fósforo Total',
+    'Nitrogênio Total',
+    'Oxigênio dissolvido',
+    'pH',
+    'Sólido Total Seco à 104ºC',
+    'Temperatura da Amostra',
+    'Turbidez',
+)
+
 
 @contextmanager
 def conexao():
@@ -94,6 +110,7 @@ def inicializar_banco():
         _adicionar_coluna(con, "parametros", "compoe_iqa", "INTEGER NOT NULL DEFAULT 0")
         _adicionar_coluna(con, "parametros", "peso_iqa", "REAL")
         _adicionar_coluna(con, "parametros", "curva_iqa", "TEXT NOT NULL DEFAULT ''")
+        _adicionar_coluna(con, "parametros", "ordem_exibicao", "INTEGER")
         _adicionar_coluna(con, "coletas", "amostra_id", "INTEGER REFERENCES amostras(id)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_coletas_ponto_data ON coletas(ponto_id, data_amostra)")
         con.execute("CREATE INDEX IF NOT EXISTS idx_coletas_amostra ON coletas(amostra_id)")
@@ -135,6 +152,33 @@ def inicializar_banco():
                         ("IQA (Índice de Qualidade da Água)", "-"))
         elif not bool(iqa["ativo"]):
             con.execute("UPDATE parametros SET ativo=1 WHERE id=?", (int(iqa["id"]),))
+
+        # Ordenação estável, sem alterar IDs, medições ou nomes já cadastrados.
+        # Atribuída somente a parâmetros ainda sem ordem (migração idempotente).
+        sem_ordem = con.execute(
+            "SELECT id, nome FROM parametros WHERE ordem_exibicao IS NULL ORDER BY id"
+        ).fetchall()
+        if sem_ordem:
+            fixos = {nome.casefold(): indice for indice, nome in enumerate(PARAMETROS_ORDEM_LAB, 1)}
+            ja_usados = {int(r[0]) for r in con.execute(
+                "SELECT ordem_exibicao FROM parametros WHERE ordem_exibicao IS NOT NULL"
+                " AND ordem_exibicao > 0"
+            )}
+            proxima = max([12, *ja_usados]) + 1
+            for item in sem_ordem:
+                nome = str(item["nome"]).strip().casefold()
+                if nome.startswith("iqa ("):
+                    ordem = 0  # IQA é preenchido em campo independente.
+                elif nome in fixos and fixos[nome] not in ja_usados:
+                    ordem = fixos[nome]
+                else:
+                    while proxima in ja_usados:
+                        proxima += 1
+                    ordem = proxima
+                    proxima += 1
+                con.execute("UPDATE parametros SET ordem_exibicao=? WHERE id=?", (ordem, item["id"]))
+                if ordem > 0:
+                    ja_usados.add(ordem)
 
         # Migração conservadora executada uma só vez. Se o usuário depois
         # selecionar "sem referência", não devemos restaurar o limite legado.
@@ -198,7 +242,7 @@ def buscar_pontos(ativos=None):
 
 def buscar_parametros(ativos=None):
     filtro = " WHERE ativo=1" if ativos is True else " WHERE ativo=0" if ativos is False else ""
-    return _df("SELECT * FROM parametros" + filtro + " ORDER BY nome COLLATE NOCASE")
+    return _df("SELECT * FROM parametros" + filtro + " ORDER BY ordem_exibicao ASC, id ASC")
 
 
 def buscar_coletas():
@@ -375,8 +419,14 @@ def salvar_parametro(id_param, nome, unidade, tipo, minimo, maximo,
         else:
             con.execute("""INSERT INTO parametros
                 (nome,unidade,tipo_limite,limite_min,limite_max,base_normativa,
-                aplicabilidade,referencia_validada,compoe_iqa,peso_iqa,curva_iqa)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?)""", valores)
+                aplicabilidade,referencia_validada,compoe_iqa,peso_iqa,curva_iqa,ordem_exibicao)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""", (
+                    *valores,
+                    0 if nome.casefold().startswith("iqa (") else max(
+                        12, con.execute("SELECT COALESCE(MAX(ordem_exibicao), 12) "
+                                        "FROM parametros WHERE ordem_exibicao > 0").fetchone()[0]
+                    ) + 1,
+                ))
 
 
 def alterar_status_parametro(id_param, ativo):
