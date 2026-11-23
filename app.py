@@ -493,10 +493,10 @@ def _referencias_parametro(parametro):
 
 
 def _referencias_grafico(fig, parametro, orientacao="horizontal"):
-    """Linha vermelha espessa com o valor exato; apenas apresentação Plotly."""
+    """Linha vermelha discreta com o valor exato; apenas apresentação Plotly."""
     refs = _referencias_parametro(parametro)
     for numero, rotulo in refs:
-        estilo = dict(line_color="#DC2626", line_width=3, line_dash="solid",
+        estilo = dict(line_color="#DC2626", line_width=1.5, line_dash="solid",
                       annotation_text=rotulo,
                       annotation_font_color="#B91C1C", annotation_font_size=12)
         if orientacao == "vertical":
