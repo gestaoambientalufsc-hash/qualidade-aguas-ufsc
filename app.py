@@ -17,6 +17,7 @@ from datetime import date
 
 import folium
 import pandas as pd
+import xlsxwriter
 import plotly.graph_objects as go
 import streamlit as st
 from streamlit_folium import st_folium
@@ -973,6 +974,191 @@ def tela_login():
 
 
 # -----------------------------------------------------------------------------
+# Consulta consolidada por ponto/campanha + exportação de relatório.
+# -----------------------------------------------------------------------------
+def montar_resumo_ponto(dados_ponto, parametros, faixas):
+    """Somente leitura; preserva a ordem dos parâmetros do laboratório."""
+    catalogo = parametros.drop_duplicates(subset=["id"]).copy()
+    existentes = dados_ponto.drop_duplicates(subset=["param_id"], keep="last")
+    por_parametro = {int(r["param_id"]): r for _, r in existentes.iterrows()}
+    linhas = []
+    for _, par in catalogo.iterrows():
+        pid = int(par["id"])
+        medicao = por_parametro.get(pid)
+        valor = float(medicao["valor"]) if medicao is not None and pd.notna(medicao["valor"]) else None
+        if somente_iqa(par["nome"]):
+            faixa = classificar_iqa(valor, faixas) if valor is not None else None
+            referencia = "Escala do IQA (0–100)"
+            situacao = str(faixa["nome"]) if faixa is not None else "Não informado"
+            cor = str(faixa["cor_texto"]) if faixa is not None else ""
+        else:
+            referencia = resumo_referencia(par)
+            situacao = verificar_conformidade(valor, par) if valor is not None else "Não analisado"
+            cor = ""
+        linhas.append({
+            "ordem": int(par["ordem_exibicao"]) if pd.notna(par.get("ordem_exibicao")) else 100000+pid,
+            "parametro": str(par["nome"]),
+            "unidade": "—" if str(par["unidade"]) == "-" else str(par["unidade"]),
+            "valor": valor,
+            "resultado": formatar_valor_br_relatorio(valor),
+            "referencia": referencia,
+            "situacao": situacao,
+            "cor_iqa": cor,
+            "iqa": somente_iqa(par["nome"]),
+        })
+    return sorted(linhas, key=lambda r: (r["iqa"], r["ordem"], r["parametro"]))
+
+
+def formatar_valor_br_relatorio(valor):
+    if valor is None or pd.isna(valor):
+        return "—"
+    n = float(valor)
+    return f"{n:,.5f}".rstrip("0").rstrip(".").replace(",", "@").replace(".", ",").replace("@", ".")
+
+
+def gerar_relatorio_excel_ponto(linhas, nome_ponto, data_coleta, titulo_referencia, codigo_amostra):
+    """Relatório formatado em memória, sem acessar nem alterar o SQLite."""
+    arquivo = io.BytesIO()
+    with xlsxwriter.Workbook(arquivo, {"in_memory": True}) as wb:
+        ws = wb.add_worksheet("Análises do ponto")
+        ws.hide_gridlines(2)
+        ws.set_zoom(95)
+        ws.set_landscape()
+        ws.fit_to_pages(1, 1)
+        ws.set_paper(9)
+        ws.set_margins(.35, .35, .5, .5)
+        ws.set_header("&CGestão Ambiental | UFSC")
+        ws.set_footer("&CMonitoramento das Águas — Página &P de &N")
+        for col, largura in enumerate([5, 41, 18, 16, 29, 23]):
+            ws.set_column(col, col, largura)
+        navy, blue, light = "#17324D", "#2563EB", "#F3F7FC"
+        titulo = wb.add_format({"font_name":"Arial","font_size":18,"bold":True,"font_color":"#FFFFFF","bg_color":navy,"valign":"vcenter"})
+        marca = wb.add_format({"font_name":"Arial","font_size":10,"bold":True,"font_color":"#E2E8F0","bg_color":navy})
+        subtitulo = wb.add_format({"font_name":"Arial","font_size":11,"bold":True,"font_color":navy,"bg_color":"#E8F1FF","valign":"vcenter"})
+        descricao = wb.add_format({"font_name":"Arial","font_size":10,"font_color":"#475569","text_wrap":True,"valign":"vcenter"})
+        rotulo = wb.add_format({"font_name":"Arial","font_size":10,"bold":True,"font_color":"#64748B"})
+        cab = wb.add_format({"font_name":"Arial","font_size":10,"bold":True,"font_color":"#FFFFFF","bg_color":blue,"bottom":1,"bottom_color":"#1D4ED8","valign":"vcenter"})
+        body = wb.add_format({"font_name":"Arial","font_size":10,"font_color":"#23364C","valign":"vcenter"})
+        alt = wb.add_format({"font_name":"Arial","font_size":10,"font_color":"#23364C","bg_color":light,"valign":"vcenter"})
+        num = wb.add_format({"font_name":"Arial","font_size":10,"font_color":navy,"num_format":"#,##0.#####","valign":"vcenter"})
+        num_alt = wb.add_format({"font_name":"Arial","font_size":10,"font_color":navy,"bg_color":light,"num_format":"#,##0.#####","valign":"vcenter"})
+        bom = wb.add_format({"font_name":"Arial","font_size":10,"bold":True,"font_color":"#166534","bg_color":"#DCFCE7","valign":"vcenter"})
+        alerta = wb.add_format({"font_name":"Arial","font_size":10,"bold":True,"font_color":"#991B1B","bg_color":"#FEE2E2","valign":"vcenter"})
+        neutro = wb.add_format({"font_name":"Arial","font_size":10,"font_color":"#64748B","valign":"vcenter"})
+        rodape = wb.add_format({"font_name":"Arial","font_size":9,"font_color":"#64748B","italic":True,"text_wrap":True,"valign":"vcenter"})
+        ws.set_row(0, 18)
+        ws.merge_range(0, 0, 0, 5, "UFSC  |  GESTÃO AMBIENTAL", marca)
+        ws.set_row(1, 38)
+        ws.merge_range(1, 0, 1, 5, "Resumo de análises da água", titulo)
+        ws.set_row(2, 28)
+        ws.merge_range(2, 0, 2, 5, nome_ponto, subtitulo)
+        ws.write(4, 0, "DATA:", rotulo)
+        ws.merge_range(4, 1, 4, 2, formatar_data(data_coleta), body)
+        ws.write(4, 3, "AMOSTRA:", rotulo)
+        ws.merge_range(4, 4, 4, 5, str(codigo_amostra), body)
+        ws.set_row(5, 34)
+        ws.merge_range(5, 0, 5, 5, "Referência informada: " + titulo_referencia, descricao)
+        cabecalhos = ["Nº", "PARÂMETRO", "RESULTADO", "UNIDADE", "REFERÊNCIA", "SITUAÇÃO"]
+        inicio = 7
+        ws.set_row(inicio, 25)
+        for j, titulo_col in enumerate(cabecalhos):
+            ws.write(inicio, j, titulo_col, cab)
+        for i, item in enumerate(linhas, 1):
+            linha = inicio+i
+            ws.set_row(linha, 24)
+            formato = alt if i % 2 == 0 else body
+            ws.write_number(linha, 0, i, formato)
+            ws.write_string(linha, 1, item["parametro"], formato)
+            if item["valor"] is None:
+                ws.write_string(linha, 2, "—", formato)
+            else:
+                ws.write_number(linha, 2, float(item["valor"]), num_alt if i%2==0 else num)
+            ws.write_string(linha, 3, item["unidade"], formato)
+            ws.write_string(linha, 4, item["referencia"], formato)
+            estado = item["situacao"]
+            status_fmt = (bom if estado == "Na referência" else
+                          alerta if estado == "Fora da referência" else neutro)
+            ws.write_string(linha, 5, estado, status_fmt)
+        final = inicio + len(linhas) + 2
+        ws.set_row(final, 35)
+        ws.merge_range(final, 0, final, 5,
+            "* Situação é comparação numérica apenas para referências validadas e aplicáveis. "
+            "O título não substitui a conferência da norma, enquadramento e condições de cada parâmetro.", rodape)
+        ws.set_row(final+1, 26)
+        ws.merge_range(final+1, 0, final+1, 5,
+            "IQA informado manualmente. Parâmetros sem análise ou sem referência validada não recebem classificação de conformidade.", rodape)
+        ws.freeze_panes(inicio+1, 2)
+        ws.autofilter(inicio, 0, inicio+len(linhas), 5)
+        ws.print_area(0,0,final+1,5)
+    return arquivo.getvalue()
+
+
+def exibir_resumo_analises_ponto(campanha_df, pontos, faixas, data_campanha):
+    """Tabela completa do ponto para a campanha atual, sem escritas no banco."""
+    with st.container(border=True):
+        titulo_secao("Resumo das análises do ponto",
+                     "Resultados laboratoriais, referência configurada e situação por parâmetro.")
+        if data_campanha is None or campanha_df.empty:
+            st.info("Selecione uma campanha com medições para consultar os resultados.")
+            return
+        ids_campanha = [int(pid) for pid in pontos["id"].tolist()
+                        if int(pid) in set(campanha_df["ponto_id"].dropna().astype(int))]
+        if not ids_campanha:
+            st.info("Esta campanha não possui resultados para os pontos disponíveis.")
+            return
+        rotulos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
+        selecionado = st.session_state.get("resumo_ponto_publico")
+        if selecionado not in ids_campanha:
+            st.session_state.resumo_ponto_publico = ids_campanha[0]
+        col_ponto, col_data = st.columns([3, 1], vertical_alignment="bottom")
+        ponto = col_ponto.selectbox("Ponto de coleta", ids_campanha, key="resumo_ponto_publico",
+                                      format_func=lambda pid: rotulos[pid])
+        col_data.metric("Data da campanha", formatar_data(data_campanha))
+        med = campanha_df[campanha_df["ponto_id"] == ponto]
+        ids_amostras = med["amostra_id"].dropna().astype(int).drop_duplicates().tolist()
+        if not ids_amostras:
+            st.info("Nenhuma amostra vinculada a este ponto e data.")
+            return
+        if len(ids_amostras) > 1:
+            amostra_id = st.selectbox("Amostra desta campanha", ids_amostras,
+                                     format_func=lambda aid: f"Amostra #{aid}",
+                                     key=f"resumo_amostra_{ponto}_{data_campanha}")
+        else:
+            amostra_id = ids_amostras[0]
+        dados_amostra = med[med["amostra_id"] == amostra_id]
+        titulo = db.buscar_titulo_referencia()
+        st.caption(f"**Referência informada:** {titulo}")
+        catalogo = db.buscar_parametros()  # inclui arquivados para preservar histórico
+        linhas = montar_resumo_ponto(dados_amostra, catalogo, faixas)
+        tabela = pd.DataFrame([{
+            "Parâmetro": linha["parametro"],
+            "Resultado": linha["resultado"],
+            "Unidade": linha["unidade"],
+            "Referência": linha["referencia"],
+            "Situação": linha["situacao"],
+        } for linha in linhas])
+        st.dataframe(tabela, hide_index=True, use_container_width=True,
+                     height=min(650, 40+35*len(tabela)))
+        st.caption("'Na referência' ou 'Fora da referência' indica apenas comparação numérica "
+                   "com limites cadastrados e validados; não substitui análise legal de enquadramento.")
+        nome_arquivo = f"analises_ufsc_ponto_{ponto}_{data_campanha.isoformat()}"
+        c1, c2 = st.columns([1.1, 1], gap="small")
+        with c1:
+            st.download_button(
+                "Baixar relatório formatado (Excel)",
+                data=gerar_relatorio_excel_ponto(linhas, rotulos[ponto], data_campanha,
+                                                 titulo, amostra_id),
+                file_name=nome_arquivo+".xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True, type="primary")
+        with c2:
+            st.download_button("Baixar dados (CSV)",
+                data=tabela.to_csv(index=False, sep=";").encode("utf-8-sig"),
+                file_name=nome_arquivo+".csv", mime="text/csv",
+                use_container_width=True)
+
+
+# -----------------------------------------------------------------------------
 # Painel público.
 # -----------------------------------------------------------------------------
 def painel_publico():
@@ -1042,6 +1228,10 @@ def painel_publico():
             titulo_secao("Classificação do IQA")
             grafico_distribuicao_iqa(campanha_df, faixas)
             st.caption("Cores dos pontos no mapa: classificação do IQA; cinza significa sem IQA na data.")
+
+    # Consulta tabular completa desta data, com exportação profissional em Excel.
+    st.write("")
+    exibir_resumo_analises_ponto(campanha_df, pontos, faixas, campanha_sel)
 
     nomes_pontos = {int(r["id"]): rotulo_ponto(r) for _, r in pontos.iterrows()}
     outros_parametros = parametros[~parametros["nome"].apply(somente_iqa)]
@@ -1890,6 +2080,19 @@ def admin_pontos(pontos):
 
 def admin_parametros(parametros):
     st.title("Parâmetros ambientais")
+    with st.expander("Título da referência normativa do relatório", expanded=False):
+        st.caption("Este título identifica a norma nos resumos e nas exportações. "
+                   "Os limites de cada parâmetro continuam sendo configurados e validados individualmente.")
+        with st.form("form_titulo_referencia_normativa"):
+            titulo_atual = db.buscar_titulo_referencia()
+            titulo_novo = st.text_input("Referência para os relatórios", value=titulo_atual,
+                                       max_chars=250)
+            if st.form_submit_button("Salvar título da referência", type="primary"):
+                try:
+                    db.salvar_titulo_referencia(titulo_novo)
+                    st.success("Título salvo com sucesso.")
+                except ValueError as exc:
+                    st.error(str(exc))
     col_t, col_b = st.columns([3, 1], vertical_alignment="center")
     with col_t:
         titulo_secao("Parâmetros cadastrados")
