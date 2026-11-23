@@ -179,6 +179,20 @@ button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !im
 }
 [class*="st-key-entrar_admin"] button:hover {background:#DBEAFE !important; border-color:#93C5FD !important;}
 [class*="st-key-entrar_admin"] {display:flex;justify-content:flex-end;}
+/* Centralização do ícone de pessoa dentro do quadrado de acesso. */
+[class*="st-key-entrar_admin"] button {
+  display:inline-flex !important; align-items:center !important; justify-content:center !important;
+  padding:0 !important; gap:0 !important; line-height:1 !important;
+}
+[class*="st-key-entrar_admin"] button p {display:none !important;}
+[class*="st-key-entrar_admin"] button [data-testid="stIconMaterial"],
+[class*="st-key-entrar_admin"] button span.material-symbols-rounded,
+[class*="st-key-entrar_admin"] button span.material-icons {
+  display:inline-flex !important; align-items:center !important; justify-content:center !important;
+  margin:0 !important; padding:0 !important; line-height:1 !important;
+  font-size:22px !important;
+}
+[class*="st-key-entrar_admin"] button svg {display:block;margin:0 auto !important;}
 [data-testid="stDataFrame"] {border-radius:10px; overflow:hidden;}
 [data-testid="stPlotlyChart"] {border-radius:10px;}
 section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bottom:.05rem;}
@@ -1309,14 +1323,70 @@ def admin_visao_geral(pontos, parametros, coletas, amostras):
         st.rerun()
     st.write("")
     with st.container(border=True):
-        titulo_secao("Coletas recentes")
+        titulo_secao("Coletas por data")
+        # A árvore parte das amostras registradas, sem supor que todos os pontos
+        # tenham coleta em todas as datas. Um ponto aparece uma vez por data.
         if amostras.empty:
             st.info("Ainda não há coletas cadastradas.")
         else:
-            resumo = amostras.head(8)[["data_amostra", "codigo", "local", "qtd_parametros"]].copy()
-            resumo["data_amostra"] = resumo["data_amostra"].map(formatar_data)
-            resumo.columns = ["Data", "Ponto", "Local", "Resultados"]
-            st.dataframe(resumo, hide_index=True, use_container_width=True)
+            registros = amostras.copy()
+            registros["dia"] = pd.to_datetime(registros["data_amostra"], errors="coerce").dt.date
+            registros = registros.dropna(subset=["dia"])
+            registros = registros[registros["qtd_parametros"].fillna(0) > 0]
+            if registros.empty:
+                st.info("Ainda não há coletas com medições registradas.")
+            else:
+                for dia in sorted(registros["dia"].unique(), reverse=True):
+                    desta_data = registros[registros["dia"] == dia].copy()
+                    pontos_data = desta_data.drop_duplicates(subset=["ponto_id"]).copy()
+                    pontos_data = pontos_data.sort_values(
+                        "codigo", key=lambda col: col.map(chave_ordenacao_ponto)
+                    )
+                    quantidade = len(pontos_data)
+                    n_amostras = len(desta_data)
+                    titulo_data = (
+                        f"{dia.strftime('%d/%m/%Y')}  ·  {quantidade} "
+                        f"{'ponto' if quantidade == 1 else 'pontos'}"
+                    )
+                    with st.expander(titulo_data, expanded=False):
+                        for _, ponto in pontos_data.iterrows():
+                            codigo = str(ponto["codigo"])
+                            local = str(ponto["local"])
+                            total_ponto = int(desta_data.loc[
+                                desta_data["ponto_id"] == ponto["ponto_id"], "qtd_parametros"
+                            ].sum())
+                            linha1, linha2 = st.columns([5, 1], vertical_alignment="center")
+                            linha1.markdown(
+                                f'<div style="padding:6px 0;font-size:13px">'
+                                f'<strong style="color:#1D4ED8">{txt(codigo)}</strong> · {txt(local)}</div>',
+                                unsafe_allow_html=True,
+                            )
+                            linha2.caption(f"{total_ponto} resultados")
+                        # Um seletor permite abrir os resultados sem usar expanders aninhados.
+                        ids_data = pontos_data["ponto_id"].astype(int).tolist()
+                        nomes_data = {int(row["ponto_id"]): rotulo_ponto(row)
+                                      for _, row in pontos_data.iterrows()}
+                        escolhido = st.selectbox(
+                            "Ver resultados de um ponto", ids_data, index=None,
+                            placeholder="Selecione um ponto",
+                            format_func=lambda pid: nomes_data[pid],
+                            key=f"visao_geral_ponto_{dia.isoformat()}",
+                        )
+                        if escolhido is not None:
+                            amostras_ponto = desta_data[desta_data["ponto_id"] == escolhido]
+                            for _, amostra in amostras_ponto.iterrows():
+                                resultados_amostra = coletas[
+                                    coletas["amostra_id"] == int(amostra["id"])
+                                ].dropna(subset=["valor"])
+                                if resultados_amostra.empty:
+                                    continue
+                                if len(amostras_ponto) > 1:
+                                    st.caption(f"Amostra #{int(amostra['id'])}")
+                                tabela = resultados_amostra[["parametro", "valor", "unidade"]].copy()
+                                tabela["valor"] = tabela["valor"].map(formatar_valor)
+                                tabela["unidade"] = tabela["unidade"].replace("-", "")
+                                tabela.columns = ["Parâmetro", "Valor", "Unidade"]
+                                st.dataframe(tabela, hide_index=True, use_container_width=True)
     with st.container(border=True):
         titulo_secao("Qualidade e consistência do cadastro")
         pendentes = parametros[(parametros["limite_legal"].notna()) &
