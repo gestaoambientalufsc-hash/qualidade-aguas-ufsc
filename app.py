@@ -1,7 +1,7 @@
 """Portal público + administração de qualidade da água — UFSC.
 
 Iniciar: streamlit run app.py
-Credenciais administrativas: configure ADMIN_USER e ADMIN_PASSWORD nos Secrets do Streamlit
+Senha administrativa padrão: 1234
 """
 from __future__ import annotations
 
@@ -29,21 +29,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 db.inicializar_banco()
-
-# -----------------------------------------------------------------------------
-# Estado inicial da sessão — deve existir antes de qualquer leitura.
-# Evita KeyError em sessões novas ou após reinicialização do Streamlit.
-# -----------------------------------------------------------------------------
-_ESTADOS_INICIAIS = {
-    "pagina": "publico",
-    "autenticado": False,
-    "falhas_login": 0,
-    "bloqueio_ate": 0.0,
-    "admin_menu": "Visão geral",
-}
-for _chave, _valor_padrao in _ESTADOS_INICIAIS.items():
-    if _chave not in st.session_state:
-        st.session_state[_chave] = _valor_padrao
 
 # -----------------------------------------------------------------------------
 # Design system — aparência institucional, contraste e componentes compactos.
@@ -1277,6 +1262,28 @@ def editar_resultado_individual(resultado):
             st.error(str(e))
 
 
+@st.dialog("Editar data da coleta", width="small", on_dismiss="rerun")
+def editar_data_amostra_dialogo(amostra_id, data_atual, codigo, local):
+    """Edita apenas a data, preservando integralmente os resultados da amostra."""
+    st.caption(f"{codigo} · {local}")
+    data_original = pd.to_datetime(data_atual).date()
+    with st.form(f"form_editar_data_amostra_{int(amostra_id)}"):
+        nova_data = st.date_input(
+            "Data da coleta", value=data_original, max_value=date.today(),
+            format="DD/MM/YYYY",
+        )
+        salvar = st.form_submit_button(
+            "Salvar data", type="primary", use_container_width=True,
+        )
+    if salvar:
+        try:
+            db.atualizar_data_amostra(int(amostra_id), nova_data)
+            st.session_state.mensagem = "Data da coleta atualizada. Os resultados foram preservados."
+            st.rerun()
+        except (ValueError, TypeError) as exc:
+            st.error(str(exc))
+
+
 @st.dialog("IQA da coleta", width="small", on_dismiss="rerun")
 def editar_iqa_amostra(amostra_id, data_amostra, codigo, local, valor_atual=None):
     """Permite incluir IQA ausente ou atualizar o resultado já registrado."""
@@ -1356,6 +1363,19 @@ def admin_coletas(pontos, parametros, amostras, coletas):
                     resultados_amostra = resultados_pt[resultados_pt["amostra_id"] == id_amostra]
                     if len(amostras_pt) > 1:
                         st.caption(f"Amostra #{id_amostra}")
+                    referencia_amostra = resultados_amostra.iloc[0]
+                    linha_data, linha_acao_data = st.columns([4, 1.25], vertical_alignment="center")
+                    linha_data.caption(
+                        f"Data da coleta: {formatar_data(referencia_amostra['data_amostra'])}"
+                    )
+                    if linha_acao_data.button(
+                        "Editar data", key=f"editar_data_amostra_{int(id_amostra)}",
+                        use_container_width=True,
+                    ):
+                        editar_data_amostra_dialogo(
+                            int(id_amostra), referencia_amostra["data_amostra"],
+                            referencia_amostra["codigo"], referencia_amostra["local"],
+                        )
                     with st.container(border=True):
                         cab = st.columns([4, 1.8, 1.1], vertical_alignment="center")
                         cab[0].caption("PARÂMETRO")
