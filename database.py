@@ -269,6 +269,27 @@ def buscar_valores_amostra(amostra_id):
     return _df("SELECT parametro_id, valor FROM coletas WHERE amostra_id=?", (int(amostra_id),))
 
 
+TITULO_REFERENCIA_PADRAO = "Resolução CONAMA 357/2005 - águas doces classe 2"
+
+
+def buscar_titulo_referencia():
+    """Título de referência para identificação nos resumos; não valida limites."""
+    with conexao() as con:
+        r = con.execute("SELECT valor FROM configuracoes WHERE chave=?",
+                        ("titulo_referencia_ambiental",)).fetchone()
+    return str(r["valor"]) if r is not None else TITULO_REFERENCIA_PADRAO
+
+
+def salvar_titulo_referencia(titulo):
+    titulo = str(titulo).strip()
+    if not titulo or len(titulo) > 250:
+        raise ValueError("Informe um título de referência de até 250 caracteres.")
+    with conexao() as con:
+        con.execute("INSERT INTO configuracoes(chave, valor) VALUES (?, ?) "
+                    "ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor",
+                    ("titulo_referencia_ambiental", titulo))
+
+
 def buscar_faixas_iqa():
     return _df("SELECT * FROM faixas_iqa ORDER BY id")
 
