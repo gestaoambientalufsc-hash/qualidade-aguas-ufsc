@@ -401,6 +401,32 @@ def _data_iso(dia):
         raise ValueError("Data da amostra inválida.") from exc
 
 
+def atualizar_data_amostra(amostra_id, nova_data):
+    """Altera somente a data de uma amostra e sincroniza suas medições vinculadas.
+
+    Os valores, parâmetros, IQA e IDs dos registros são preservados.
+    """
+    dia = _data_iso(nova_data)
+    if dia > date.today().isoformat():
+        raise ValueError("A data da coleta não pode estar no futuro.")
+
+    with conexao() as con:
+        amostra = con.execute(
+            "SELECT id FROM amostras WHERE id=?", (int(amostra_id),)
+        ).fetchone()
+        if amostra is None:
+            raise ValueError("A coleta selecionada não existe.")
+
+        con.execute(
+            "UPDATE amostras SET data_amostra=? WHERE id=?",
+            (dia, int(amostra_id)),
+        )
+        con.execute(
+            "UPDATE coletas SET data_amostra=? WHERE amostra_id=?",
+            (dia, int(amostra_id)),
+        )
+
+
 def _validar_valores(valores):
     saida = {}
     for param_id, valor in valores.items():
