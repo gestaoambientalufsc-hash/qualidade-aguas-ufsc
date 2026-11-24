@@ -340,8 +340,11 @@ def formatar_valor(valor):
 
 def formatar_data(dia):
     try:
-        return pd.to_datetime(dia).strftime("%d/%m/%Y")
-    except (ValueError, TypeError):
+        data = pd.to_datetime(dia, errors="coerce")
+        if pd.isna(data):
+            return "—"
+        return data.strftime("%d/%m/%Y")
+    except (ValueError, TypeError, AttributeError):
         return "—"
 
 
