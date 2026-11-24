@@ -1460,7 +1460,7 @@ def limpar_pagina_apos_salvar():
     """Executado antes de criar widgets; mantém autenticação e navegação."""
     pagina = st.session_state.pop("_limpar_pagina_admin", None)
     prefixos = {
-        "Coletas e análises": ("nova_", "edit_", "historico_ponto_"),
+        "Coletas e análises": ("nova_", "edit_", "historico_ponto_", "confirmar_excluir_amostra_"),
         "Pontos de coleta": ("editor_ponto_", "editor_lat", "editor_lon", "modo_coord_ponto_",
                               "e_ponto_", "n_ponto_", "lat_ponto_", "lon_ponto_", "admin_ponto_",
                               "importar_utm_csv_", "confirmar_importacao_utm_", "botao_importar_utm_"),
@@ -1591,16 +1591,18 @@ def confirmar_arquivamento(tipo, identificador, nome, ativar=False):
 
 
 @st.dialog("Confirmar exclusão da coleta", on_dismiss="rerun")
-def confirmar_exclusao_amostra(amostra_id):
-    st.error("Esta operação remove permanentemente a amostra e todos os valores associados. Não poderá ser desfeita.")
-    confirmar = st.checkbox("Entendi que esta exclusão é permanente.")
+def confirmar_exclusao_amostra(amostra_id, codigo, local, data_amostra):
+    st.write(f"Ponto: {codigo} · {local}")
+    st.write(f"Data da coleta: {formatar_data(data_amostra)}")
+    st.warning("Todos os resultados e o IQA desta coleta serão excluídos. Os demais pontos e datas serão preservados.")
+    confirmar = st.checkbox("Confirmo a exclusão desta coleta.", key=f"confirmar_excluir_amostra_{amostra_id}")
     c1, c2 = st.columns(2)
     if c1.button("Cancelar", use_container_width=True):
         st.rerun()
     if c2.button("Excluir coleta", type="primary", disabled=not confirmar, use_container_width=True):
         try:
             db.excluir_amostra(amostra_id)
-        except db.ErroPersistencia as exc:
+        except (ValueError, OSError) as exc:
             st.error(str(exc))
             return
         concluir_salvamento("Coleta excluída.")
@@ -2077,7 +2079,7 @@ def admin_coletas(pontos, parametros, amostras, coletas):
                         amostra_info = amostras.loc[
                             amostras["id"].astype(int) == int(id_amostra)
                         ].iloc[0]
-                        linha_data = st.columns([4, 1.1], vertical_alignment="center")
+                        linha_data = st.columns([4, 1.1, 1.4], vertical_alignment="center")
                         linha_data[0].caption(
                             f"Data da coleta: {formatar_data(amostra_info['data_amostra'])}"
                         )
@@ -2089,6 +2091,15 @@ def admin_coletas(pontos, parametros, amostras, coletas):
                             editar_data_amostra_dialogo(
                                 int(id_amostra), amostra_info["data_amostra"],
                                 str(amostra_info["codigo"]), str(amostra_info["local"]),
+                            )
+                        if linha_data[2].button(
+                            "Excluir coleta",
+                            key=chave_formulario_admin(f"excluir_amostra_{int(id_amostra)}"),
+                            use_container_width=True,
+                        ):
+                            confirmar_exclusao_amostra(
+                                int(id_amostra), str(amostra_info["codigo"]),
+                                str(amostra_info["local"]), amostra_info["data_amostra"],
                             )
                         cab = st.columns([4, 1.8, 1.1], vertical_alignment="center")
                         cab[0].caption("PARÂMETRO")
