@@ -1437,9 +1437,48 @@ def painel_publico():
 # -----------------------------------------------------------------------------
 # Componentes de edição administrativa — modais e confirmações.
 # -----------------------------------------------------------------------------
+def versao_formulario_admin():
+    pagina = st.session_state.get("admin_menu", "Visão geral")
+    return st.session_state.get("_versoes_formularios_admin", {}).get(pagina, 0)
+
+
+def chave_formulario_admin(chave):
+    return f"{chave}_v{versao_formulario_admin()}"
+
+
+def concluir_salvamento(mensagem):
+    """Reinicia os campos da página somente após a gravação bem-sucedida."""
+    st.session_state.mensagem = mensagem
+    st.session_state._limpar_pagina_admin = st.session_state.get("admin_menu")
+    st.rerun()
+
+
+def limpar_pagina_apos_salvar():
+    """Executado antes de criar widgets; mantém autenticação e navegação."""
+    pagina = st.session_state.pop("_limpar_pagina_admin", None)
+    prefixos = {
+        "Coletas e análises": ("nova_", "edit_", "historico_ponto_"),
+        "Pontos de coleta": ("editor_ponto_", "editor_lat", "editor_lon", "modo_coord_ponto_",
+                              "e_ponto_", "n_ponto_", "lat_ponto_", "lon_ponto_", "admin_ponto_",
+                              "importar_utm_csv_", "confirmar_importacao_utm_", "botao_importar_utm_"),
+        "Parâmetros ambientais": ("admin_param_",),
+        "Configuração do IQA": ("faixa_min_", "faixa_max_"),
+        "Visão geral": ("visao_geral_ponto_",),
+    }.get(pagina, ())
+    if prefixos:
+        for chave in list(st.session_state.keys()):
+            if chave.startswith(prefixos):
+                st.session_state.pop(chave, None)
+    if pagina:
+        # Novas identidades dos widgets impedem que o navegador restaure valores antigos.
+        versoes = dict(st.session_state.get("_versoes_formularios_admin", {}))
+        versoes[pagina] = versoes.get(pagina, 0) + 1
+        st.session_state._versoes_formularios_admin = versoes
+
+
 @st.dialog("Cadastrar ou editar ponto", width="large", on_dismiss="rerun")
 def formulario_ponto(ponto=None):
-    token = f"ponto_{int(ponto['id'])}" if ponto is not None else "ponto_novo"
+    token = chave_formulario_admin(f"ponto_{int(ponto['id'])}" if ponto is not None else "ponto_novo")
     lat_ant = float(ponto['latitude']) if ponto is not None and pd.notna(ponto['latitude']) else -27.601
     lon_ant = float(ponto['longitude']) if ponto is not None and pd.notna(ponto['longitude']) else -48.518
     if st.session_state.get('editor_ponto_token') != token:
@@ -1477,9 +1516,7 @@ def formulario_ponto(ponto=None):
                 db.inserir_ponto(codigo, local, lat, lon)
             else:
                 db.atualizar_ponto(int(ponto['id']), codigo, local, lat, lon)
-            st.session_state.editor_ponto_token = None
-            st.session_state.mensagem = 'Ponto salvo com sucesso.'
-            st.rerun()
+            concluir_salvamento('Ponto salvo com sucesso.')
         except (ValueError, TypeError) as exc:
             st.error(str(exc))
 
@@ -1493,38 +1530,38 @@ def formulario_parametro(param=None):
     # habilitados imediatamente ao escolher o tipo de referência.
     with st.container():
         n1, n2 = st.columns([2, 1])
-        nome = n1.text_input("Nome *", value=str(param["nome"]) if param is not None else "")
-        unidade = n2.text_input("Unidade *", value=str(param["unidade"]) if param is not None else "mg/L")
+        nome = n1.text_input("Nome *", value=str(param["nome"]) if param is not None else "", key=chave_formulario_admin("admin_param_nome"))
+        unidade = n2.text_input("Unidade *", value=str(param["unidade"]) if param is not None else "mg/L", key=chave_formulario_admin("admin_param_unidade"))
         tipo = st.selectbox("Tipo de referência", tipo_opcoes,
                             index=tipo_opcoes.index(tipo_atual) if tipo_atual in tipo_opcoes else 0,
+                            key=chave_formulario_admin("admin_param_tipo"),
                             format_func=lambda v: {"nenhum": "Sem referência", "minimo": "Mínimo",
                                                    "maximo": "Máximo", "intervalo": "Intervalo (mínimo e máximo)"}[v])
         l1, l2 = st.columns(2)
         min_atual = float(param["limite_min"]) if param is not None and pd.notna(param["limite_min"]) else None
         max_atual = float(param["limite_max"]) if param is not None and pd.notna(param["limite_max"]) else None
         minimo = l1.number_input("Valor mínimo", value=min_atual, format="%.5f", step=0.01,
-                                 disabled=tipo not in ("minimo", "intervalo"))
+                                 disabled=tipo not in ("minimo", "intervalo"), key=chave_formulario_admin("admin_param_minimo"))
         maximo = l2.number_input("Valor máximo", value=max_atual, format="%.5f", step=0.01,
-                                 disabled=tipo not in ("maximo", "intervalo"))
+                                 disabled=tipo not in ("maximo", "intervalo"), key=chave_formulario_admin("admin_param_maximo"))
         norma = st.text_input("Base normativa (norma, artigo ou resolução)",
-                              value=str(param["base_normativa"]) if param is not None else "")
+                              value=str(param["base_normativa"]) if param is not None else "", key=chave_formulario_admin("admin_param_norma"))
         aplica = st.text_input("Aplicabilidade (classe, enquadramento, condições)",
-                               value=str(param["aplicabilidade"]) if param is not None else "")
+                               value=str(param["aplicabilidade"]) if param is not None else "", key=chave_formulario_admin("admin_param_aplica"))
         valida = st.checkbox("Referência revisada e validada para o contexto do monitoramento",
-                             value=bool(param["referencia_validada"]) if param is not None else False)
+                             value=bool(param["referencia_validada"]) if param is not None else False, key=chave_formulario_admin("admin_param_valida"))
         # Preservar os metadados antigos, sem exibir campos de metodologia do IQA.
         compoe = bool(param["compoe_iqa"]) if param is not None else False
         peso = (float(param["peso_iqa"])
                 if param is not None and pd.notna(param["peso_iqa"]) else None)
         curva = str(param["curva_iqa"] or "") if param is not None else ""
         salvar = st.button("Salvar parâmetro", type="primary", use_container_width=True,
-                           key="salvar_parametro_modal")
+                           key=chave_formulario_admin("admin_param_salvar_modal"))
     if salvar:
         try:
             db.salvar_parametro(None if param is None else int(param["id"]), nome, unidade, tipo,
                                minimo, maximo, norma, aplica, valida, compoe, peso, curva)
-            st.session_state.mensagem = "Parâmetro salvo com sucesso."
-            st.rerun()
+            concluir_salvamento("Parâmetro salvo com sucesso.")
         except ValueError as e:
             st.error(str(e))
 
@@ -1547,8 +1584,7 @@ def confirmar_arquivamento(tipo, identificador, nome, ativar=False):
         except db.ErroPersistencia as exc:
             st.error(str(exc))
             return
-        st.session_state.mensagem = "Cadastro atualizado."
-        st.rerun()
+        concluir_salvamento("Cadastro atualizado.")
 
 
 @st.dialog("Confirmar exclusão da coleta", on_dismiss="rerun")
@@ -1564,8 +1600,7 @@ def confirmar_exclusao_amostra(amostra_id):
         except db.ErroPersistencia as exc:
             st.error(str(exc))
             return
-        st.session_state.mensagem = "Coleta excluída."
-        st.rerun()
+        concluir_salvamento("Coleta excluída.")
 
 
 def _validar_resultados_semanticos(parametros, valores):
@@ -1657,21 +1692,23 @@ def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
         st.info("Cadastre ao menos um ponto e um parâmetro ativos para registrar uma coleta.")
         return
     amostra_id = int(amostra["id"]) if amostra is not None else None
-    prefixo = f"edit_{amostra_id}" if amostra_id else "nova"
+    prefixo = chave_formulario_admin(f"edit_{amostra_id}" if amostra_id else "nova")
     ids_pt = pontos["id"].astype(int).tolist()
     mapa_pt = {int(p["id"]): f"{p['codigo']} · {p['local']}" for _, p in pontos.iterrows()}
-    ponto_padrao = int(amostra["ponto_id"]) if amostra is not None else ids_pt[0]
+    ponto_padrao = int(amostra["ponto_id"]) if amostra is not None else None
     if ponto_padrao not in ids_pt:
-        ponto_padrao = ids_pt[0]
+        ponto_padrao = None
     with st.container(border=True):
         titulo_secao("1. Identificação da amostra")
         p1, p2 = st.columns([2, 1])
-        ponto = p1.selectbox("Ponto de coleta *", ids_pt, index=ids_pt.index(ponto_padrao),
+        ponto = p1.selectbox("Ponto de coleta *", ids_pt,
+                             index=ids_pt.index(ponto_padrao) if ponto_padrao is not None else None,
+                             placeholder="Selecione o ponto de coleta",
                              format_func=lambda i: mapa_pt[i], key=f"{prefixo}_ponto")
         dia = p2.date_input("Data da coleta *", value=pd.to_datetime(amostra["data_amostra"]).date()
-                            if amostra is not None else date.today(), max_value=date.today(),
+                            if amostra is not None else None, max_value=date.today(),
                             format="DD/MM/YYYY", key=f"{prefixo}_data")
-    duplicadas = db.buscar_duplicadas(ponto, dia, amostra_id)
+    duplicadas = db.buscar_duplicadas(ponto, dia, amostra_id) if ponto is not None and dia is not None else 0
     if duplicadas:
         st.warning(f"Já existe(m) {duplicadas} coleta(s) nesse ponto nessa data. Confira para evitar duplicidade.")
         confirmar_mesma_data = st.checkbox("Confirmo que se trata de outra amostra ou de um registro distinto.",
@@ -1768,7 +1805,7 @@ def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
     preenchidos = {k: v for k, v in valores.items() if v is not None}
     with st.container(border=True, key=f"sticky_coleta_{prefixo}"):
         titulo_secao("4. Conferência e registro")
-        st.caption(f"Ponto: {mapa_pt[ponto]} · Data: {formatar_data(dia)} · "
+        st.caption(f"Ponto: {mapa_pt.get(ponto, 'Não selecionado')} · Data: {formatar_data(dia)} · "
                    f"Resultados informados: {len(preenchidos)}")
         a, b = st.columns([3, 1], vertical_alignment="bottom")
         with a:
@@ -1777,9 +1814,11 @@ def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
         with b:
             salvar = st.button("Salvar alterações" if amostra_id else "Salvar coleta",
                                type="primary", key=f"{prefixo}_salvar", use_container_width=True,
-                               disabled=bool(erro_colagem) or not confirmar_ordem)
+                               disabled=ponto is None or dia is None or bool(erro_colagem) or not confirmar_ordem)
     if salvar:
         try:
+            if ponto is None or dia is None:
+                raise ValueError("Selecione o ponto e a data da coleta.")
             if duplicadas and not confirmar_mesma_data:
                 raise ValueError("Confirme a existência da outra amostra antes de continuar.")
             _validar_resultados_semanticos(parametros, preenchidos)
@@ -1789,13 +1828,7 @@ def formulario_amostra(pontos, parametros, amostra=None, dialogo=False):
                 observacoes=str(amostra["observacoes"] or "") if amostra is not None else "",
                 permitir_mesma_data=confirmar_mesma_data, amostra_id=amostra_id,
             )
-            st.session_state.mensagem = "Coleta salva com sucesso."
-            # Limpa controles da nova coleta para não reutilizar resultados por acidente.
-            if not amostra_id:
-                for chave in list(st.session_state.keys()):
-                    if chave.startswith("nova_"):
-                        del st.session_state[chave]
-            st.rerun()
+            concluir_salvamento("Coleta salva com sucesso.")
         except (ValueError, TypeError) as e:
             st.error(str(e))
 
@@ -1881,7 +1914,7 @@ def admin_visao_geral(pontos, parametros, coletas, amostras):
                             "Ver resultados de um ponto", ids_data, index=None,
                             placeholder="Selecione um ponto",
                             format_func=lambda pid: nomes_data[pid],
-                            key=f"visao_geral_ponto_{dia.isoformat()}",
+                            key=chave_formulario_admin(f"visao_geral_ponto_{dia.isoformat()}"),
                         )
                         if escolhido is not None:
                             amostras_ponto = desta_data[desta_data["ponto_id"] == escolhido]
@@ -1917,7 +1950,7 @@ def editar_resultado_individual(resultado):
     unidade = str(resultado.get("unidade") or "")
     if unidade == "-":
         unidade = ""
-    with st.form(f"form_editar_medicao_{int(resultado['id'])}"):
+    with st.form(chave_formulario_admin(f"form_editar_medicao_{int(resultado['id'])}")):
         valor = st.number_input(
             f"Valor medido{(' (' + unidade + ')') if unidade else ''}",
             value=float(resultado["valor"]), step=0.00001, format="%.5f",
@@ -1932,8 +1965,7 @@ def editar_resultado_individual(resultado):
             if not selecionado.empty:
                 _validar_resultados_semanticos(selecionado, {int(resultado["param_id"]): valor})
             db.atualizar_valor_coleta(int(resultado["id"]), valor)
-            st.session_state.mensagem = "Resultado atualizado com sucesso."
-            st.rerun()
+            concluir_salvamento("Resultado atualizado com sucesso.")
         except (ValueError, TypeError) as e:
             st.error(str(e))
 
@@ -1942,7 +1974,7 @@ def editar_resultado_individual(resultado):
 def editar_data_amostra_dialogo(amostra_id, data_amostra, codigo, local):
     """Altera somente a data da amostra, preservando todas as medições e o IQA."""
     st.caption(f"{codigo} · {local}")
-    with st.form(f"form_editar_data_amostra_{int(amostra_id)}"):
+    with st.form(chave_formulario_admin(f"form_editar_data_amostra_{int(amostra_id)}")):
         nova_data = st.date_input(
             "Data da coleta",
             value=pd.to_datetime(data_amostra).date(),
@@ -1955,8 +1987,7 @@ def editar_data_amostra_dialogo(amostra_id, data_amostra, codigo, local):
     if salvar:
         try:
             db.atualizar_data_amostra(int(amostra_id), nova_data)
-            st.session_state.mensagem = "Data da coleta atualizada com sucesso."
-            st.rerun()
+            concluir_salvamento("Data da coleta atualizada com sucesso.")
         except (ValueError, TypeError) as exc:
             st.error(str(exc))
 
@@ -1965,7 +1996,7 @@ def editar_data_amostra_dialogo(amostra_id, data_amostra, codigo, local):
 def editar_iqa_amostra(amostra_id, data_amostra, codigo, local, valor_atual=None):
     """Permite incluir IQA ausente ou atualizar o resultado já registrado."""
     st.caption(f"{formatar_data(data_amostra)} · {codigo} · {local}")
-    with st.form(f"form_iqa_amostra_{int(amostra_id)}"):
+    with st.form(chave_formulario_admin(f"form_iqa_amostra_{int(amostra_id)}")):
         iqa = st.number_input(
             "Valor do IQA (0 a 100)", min_value=0.0, max_value=100.0,
             value=float(valor_atual) if valor_atual is not None else None,
@@ -1979,8 +2010,7 @@ def editar_iqa_amostra(amostra_id, data_amostra, codigo, local, valor_atual=None
             if iqa is None:
                 raise ValueError("Informe o valor do IQA antes de salvar.")
             db.salvar_iqa_amostra(amostra_id, iqa)
-            st.session_state.mensagem = "IQA salvo com sucesso."
-            st.rerun()
+            concluir_salvamento("IQA salvo com sucesso.")
         except (ValueError, TypeError) as exc:
             st.error(str(exc))
 
@@ -2030,7 +2060,7 @@ def admin_coletas(pontos, parametros, amostras, coletas):
                     "Ponto de coleta", options=identificadores,
                     index=None, placeholder="Selecione um ponto desta data",
                     format_func=lambda pid: rotulos[pid],
-                    key=f"historico_ponto_{dia.isoformat()}",
+                    key=chave_formulario_admin(f"historico_ponto_{dia.isoformat()}"),
                 )
                 if escolhido is None:
                     continue
@@ -2107,7 +2137,8 @@ def admin_pontos(pontos):
         formulario_ponto()
     with st.expander('Importar pontos UTM (CSV)', expanded=False):
         st.caption('Formato: codigo;local;E (m);N (m) · UTM zona 22 Sul, SIRGAS 2000.')
-        arquivo = st.file_uploader('Arquivo CSV', type=['csv'], key='importar_utm_csv')
+        versao = versao_formulario_admin()
+        arquivo = st.file_uploader('Arquivo CSV', type=['csv'], key=f'importar_utm_csv_{versao}')
         if arquivo is not None:
             try:
                 dados_importar = ler_csv_utm(arquivo)
@@ -2117,18 +2148,17 @@ def admin_pontos(pontos):
                 }), hide_index=True, use_container_width=True)
                 st.caption(f'{len(dados_importar)} pontos no arquivo. Códigos já existentes serão ignorados.')
                 confirmacao = st.checkbox('Conferi os pontos e o sistema de coordenadas',
-                                           key='confirmar_importacao_utm')
+                                           key=f'confirmar_importacao_utm_{versao}')
                 if st.button('Importar pontos', type='primary', disabled=not confirmacao,
-                             key='botao_importar_utm'):
+                             key=f'botao_importar_utm_{versao}'):
                     adicionados, ignorados = db.importar_pontos_lote(dados_importar.to_dict('records'))
-                    st.session_state.mensagem = (f'{adicionados} pontos importados; '
-                                                  f'{ignorados} códigos já existentes ignorados.')
-                    st.rerun()
+                    concluir_salvamento(f'{adicionados} pontos importados; '
+                                         f'{ignorados} códigos já existentes ignorados.')
             except (ValueError, KeyError) as exc:
                 st.error(str(exc))
     busca, incl = st.columns([3, 1], vertical_alignment="bottom")
-    texto = busca.text_input("Pesquisar ponto", placeholder="Código ou local", label_visibility="collapsed")
-    ver_inativos = incl.checkbox("Exibir arquivados", value=False)
+    texto = busca.text_input("Pesquisar ponto", placeholder="Código ou local", label_visibility="collapsed", key=chave_formulario_admin("admin_ponto_busca"))
+    ver_inativos = incl.checkbox("Exibir arquivados", value=False, key=chave_formulario_admin("admin_ponto_inativos"))
     exibidos = pontos.copy()
     if not ver_inativos:
         exibidos = exibidos[exibidos["ativo"] == 1]
@@ -2165,14 +2195,14 @@ def admin_parametros(parametros):
     with st.expander("Título da referência normativa do relatório", expanded=False):
         st.caption("Este título identifica a norma nos resumos e nas exportações. "
                    "Os limites de cada parâmetro continuam sendo configurados e validados individualmente.")
-        with st.form("form_titulo_referencia_normativa"):
+        with st.form(chave_formulario_admin("form_titulo_referencia_normativa")):
             titulo_atual = buscar_titulo_referencia_seguro()
             titulo_novo = st.text_input("Referência para os relatórios", value=titulo_atual,
-                                       max_chars=250)
+                                       max_chars=250, key=chave_formulario_admin("admin_param_titulo"))
             if st.form_submit_button("Salvar título da referência", type="primary"):
                 try:
                     salvar_titulo_referencia_seguro(titulo_novo)
-                    st.success("Título salvo com sucesso.")
+                    concluir_salvamento("Título salvo com sucesso.")
                 except ValueError as exc:
                     st.error(str(exc))
     col_t, col_b = st.columns([3, 1], vertical_alignment="center")
@@ -2181,8 +2211,8 @@ def admin_parametros(parametros):
     if col_b.button("+ Novo parâmetro", type="primary", use_container_width=True):
         formulario_parametro()
     busca, inativos = st.columns([3, 1], vertical_alignment="bottom")
-    termo = busca.text_input("Buscar parâmetro", placeholder="Nome do parâmetro", label_visibility="collapsed")
-    ver_inativos = inativos.checkbox("Exibir arquivados")
+    termo = busca.text_input("Buscar parâmetro", placeholder="Nome do parâmetro", label_visibility="collapsed", key=chave_formulario_admin("admin_param_busca"))
+    ver_inativos = inativos.checkbox("Exibir arquivados", key=chave_formulario_admin("admin_param_inativos"))
     exibidos = parametros.copy()
     if not ver_inativos:
         exibidos = exibidos[exibidos["ativo"] == 1]
@@ -2217,7 +2247,7 @@ def admin_iqa(faixas, config, parametros):
     st.title("Configuração do IQA")
     with st.container(border=True):
         titulo_secao("Faixas de qualidade")
-        with st.form("form_faixas_iqa"):
+        with st.form(chave_formulario_admin("form_faixas_iqa")):
             hdr = st.columns([2, 1, 1])
             for col, texto_ in zip(hdr, ["CATEGORIA", "MÍNIMO", "MÁXIMO"]):
                 col.caption(texto_)
@@ -2232,24 +2262,24 @@ def admin_iqa(faixas, config, parametros):
                 minimo = c2.number_input(
                     f"Mínimo {r['nome']}", value=float(r["valor_min"]),
                     min_value=0.0, max_value=100.0, step=1.0,
-                    label_visibility="collapsed", key=f"faixa_min_{r['id']}",
+                    label_visibility="collapsed", key=chave_formulario_admin(f"faixa_min_{r['id']}"),
                 )
                 maximo = c3.number_input(
                     f"Máximo {r['nome']}", value=float(r["valor_max"]),
                     min_value=0.0, max_value=100.0, step=1.0,
-                    label_visibility="collapsed", key=f"faixa_max_{r['id']}",
+                    label_visibility="collapsed", key=chave_formulario_admin(f"faixa_max_{r['id']}"),
                 )
                 alteradas.append({"id": int(r["id"]), "min": minimo, "max": maximo})
             if st.form_submit_button("Salvar todas as faixas", type="primary"):
                 try:
                     db.atualizar_faixas_iqa(alteradas)
-                    st.session_state.mensagem = "Faixas do IQA atualizadas."
-                    st.rerun()
+                    concluir_salvamento("Faixas do IQA atualizadas.")
                 except ValueError as e:
                     st.error(str(e))
 
 
 def painel_admin():
+    limpar_pagina_apos_salvar()
     with st.sidebar:
         try:
             st.download_button("Baixar backup do banco", data=db.baixar_backup(),
