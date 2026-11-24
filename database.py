@@ -16,7 +16,7 @@ from datetime import date, datetime
 
 import pandas as pd
 
-DB_NAME = os.getenv("AGUAS_DB_PATH", "aguas_ufsc.db")
+
 
 # Ordem da tabela original do laboratório (novos parâmetros entram ao final).
 PARAMETROS_ORDEM_LAB = (
@@ -35,25 +35,125 @@ PARAMETROS_ORDEM_LAB = (
 )
 
 
+# Persistência GitHub: cada transação usa uma cópia SQLite isolada.
+import base64
+import json
+import tempfile
+import threading
+from pathlib import Path
+from urllib.request import Request, urlopen
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote
+
+class ErroPersistencia(ValueError):
+    pass
+
+_LOCK = threading.RLock()
+_MAX_BYTES = 900_000
+_CACHE = None
+
+def _config_github():
+    import streamlit as st
+    try:
+        cfg = st.secrets["github_db"]
+        token, repo = str(cfg["token"]), str(cfg["repo"])
+        branch = str(cfg.get("branch", "main"))
+        path = str(cfg.get("path", "aguas_ufsc.db"))
+    except (KeyError, FileNotFoundError) as exc:
+        raise ErroPersistencia("Configure a seção github_db nas Secrets do Streamlit.") from exc
+    if not token or not re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+        raise ErroPersistencia("Configuração do GitHub inválida.")
+    return token, repo, branch, path
+
+def _api(method, payload=None, etag=None):
+    token, repo, branch, path = _config_github()
+    url = f"https://api.github.com/repos/{repo}/contents/{quote(path, safe='/')}"
+    if method == "GET":
+        url += "?ref=" + quote(branch, safe="")
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/vnd.github+json",
+               "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "UFSC-aguas"}
+    if etag:
+        headers["If-None-Match"] = etag
+    data = None if payload is None else json.dumps(payload).encode()
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    try:
+        with urlopen(Request(url, data=data, headers=headers, method=method), timeout=30) as r:
+            return json.load(r), r.headers.get("ETag")
+    except HTTPError as exc:
+        if exc.code == 304 and method == "GET":
+            return None, etag
+        if exc.code in (409, 422) and method == "PUT":
+            raise ErroPersistencia("Conflito no GitHub. Atualize a página e confira os dados antes de repetir a alteração.") from exc
+        raise ErroPersistencia(f"GitHub retornou HTTP {exc.code}. Confira permissões, arquivo e configuração. Nenhum banco vazio será criado.") from exc
+    except (URLError, TimeoutError, OSError, ValueError) as exc:
+        raise ErroPersistencia("Não foi possível confirmar a comunicação com o GitHub. Confira os registros antes de tentar novamente.") from exc
+
+def _baixar():
+    global _CACHE
+    cfg = _config_github()[1:]
+    antigo = _CACHE if _CACHE is not None and _CACHE[0] == cfg else None
+    obj, etag = _api("GET", etag=antigo[3] if antigo else None)
+    if obj is None and antigo:
+        return antigo[1], antigo[2]
+    if not isinstance(obj, dict) or obj.get("encoding") != "base64":
+        raise ErroPersistencia("Arquivo do banco indisponível ou acima do limite desta integração.")
+    try:
+        dados = base64.b64decode(obj["content"])
+        sha = obj["sha"]
+    except (KeyError, ValueError) as exc:
+        raise ErroPersistencia("Resposta inválida do GitHub.") from exc
+    if not dados.startswith(b"SQLite format 3\x00") or len(dados) > _MAX_BYTES:
+        raise ErroPersistencia("Banco inválido ou acima de 900 KB. Não será sobrescrito.")
+    _CACHE = (cfg, dados, sha, etag)
+    return dados, sha
+
+def _enviar(dados, sha):
+    global _CACHE
+    if len(dados) > _MAX_BYTES:
+        raise ErroPersistencia("Banco acima de 900 KB. A alteração não foi enviada; revise a estratégia de armazenamento.")
+    branch = _config_github()[2]
+    try:
+        _api("PUT", {"message": "Atualizar banco de monitoramento", "branch": branch,
+                     "content": base64.b64encode(dados).decode("ascii"), "sha": sha})
+    finally:
+        _CACHE = None
+
+def baixar_backup():
+    with _LOCK:
+        return _baixar()[0]
+
 @contextmanager
 def conexao():
-    con = sqlite3.connect(DB_NAME, timeout=20)
-    con.row_factory = sqlite3.Row
-    con.execute("PRAGMA foreign_keys = ON")
-    try:
-        yield con
-        con.commit()
-    except Exception:
-        con.rollback()
-        raise
-    finally:
-        con.close()
+    with _LOCK:
+        dados, sha = _baixar()
+        with tempfile.TemporaryDirectory() as pasta:
+            arquivo = Path(pasta) / "banco.db"
+            arquivo.write_bytes(dados)
+            con = sqlite3.connect(arquivo, timeout=20)
+            con.row_factory = sqlite3.Row
+            con.execute("PRAGMA foreign_keys = ON")
+            try:
+                yield con
+                con.commit()
+            except Exception:
+                con.rollback()
+                raise
+            finally:
+                con.close()
+            novos = arquivo.read_bytes()
+            if novos != dados:
+                _enviar(novos, sha)
 
 
 def get_conexao():
-    """Interface de consulta legada; o chamador deve fechar a conexão."""
-    con = sqlite3.connect(DB_NAME, timeout=20)
+    """Conexão legada de leitura; alterações devem usar conexao()."""
+    with _LOCK:
+        dados, _ = _baixar()
+    con = sqlite3.connect(":memory:")
+    con.deserialize(dados)
     con.execute("PRAGMA foreign_keys = ON")
+    con.execute("PRAGMA query_only = ON")
     return con
 
 
