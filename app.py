@@ -29,7 +29,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="collapsed",
 )
-db.inicializar_banco()
+try:
+    db.inicializar_banco()
+except db.ErroPersistencia as exc:
+    st.error(str(exc))
+    st.stop()
 
 for _chave, _padrao in {
     "pagina": "publico", "autenticado": False, "admin_menu": "Visão geral",
@@ -1535,10 +1539,14 @@ def confirmar_arquivamento(tipo, identificador, nome, ativar=False):
     if x.button("Cancelar", use_container_width=True):
         st.rerun()
     if y.button("Confirmar", type="primary", use_container_width=True):
-        if tipo == "ponto":
-            db.alterar_status_ponto(identificador, ativar)
-        else:
-            db.alterar_status_parametro(identificador, ativar)
+        try:
+            if tipo == "ponto":
+                db.alterar_status_ponto(identificador, ativar)
+            else:
+                db.alterar_status_parametro(identificador, ativar)
+        except db.ErroPersistencia as exc:
+            st.error(str(exc))
+            return
         st.session_state.mensagem = "Cadastro atualizado."
         st.rerun()
 
@@ -1551,7 +1559,11 @@ def confirmar_exclusao_amostra(amostra_id):
     if c1.button("Cancelar", use_container_width=True):
         st.rerun()
     if c2.button("Excluir coleta", type="primary", disabled=not confirmar, use_container_width=True):
-        db.excluir_amostra(amostra_id)
+        try:
+            db.excluir_amostra(amostra_id)
+        except db.ErroPersistencia as exc:
+            st.error(str(exc))
+            return
         st.session_state.mensagem = "Coleta excluída."
         st.rerun()
 
@@ -2238,6 +2250,12 @@ def admin_iqa(faixas, config, parametros):
 
 
 def painel_admin():
+    with st.sidebar:
+        try:
+            st.download_button("Baixar backup do banco", data=db.baixar_backup(),
+                               file_name="aguas_ufsc.db", mime="application/octet-stream")
+        except db.ErroPersistencia as exc:
+            st.error(str(exc))
     pontos = db.buscar_pontos()
     parametros = db.buscar_parametros()
     coletas = db.buscar_coletas()
