@@ -1246,7 +1246,7 @@ def painel_publico():
 
     cabecalho_publico()
     st.title("Qualidade da água nos córregos da UFSC")
-    st.markdown('<div class="lead">Veja o mapa dos pontos, acompanhe o IQA e compare campanhas, parâmetros e locais de coleta.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="lead">Veja o mapa dos pontos e acompanhe a evolução do IQA e dos parâmetros de qualidade da água por local de coleta.</div>', unsafe_allow_html=True)
     st.write("")
 
     campanhas = sorted(resultados["dia"].dropna().unique(), reverse=True) if not resultados.empty else []
@@ -1370,63 +1370,6 @@ def painel_publico():
             grafico_iqa(dados_iqa_ponto[dados_iqa_ponto["parametro"].apply(somente_iqa)], faixas)
         else:
             st.info("Ainda não existem valores de IQA registrados para os pontos.")
-
-    # 3 — Comparação do IQA de vários pontos ao longo do tempo.
-    st.write("")
-    with st.container(border=True):
-        titulo_secao("Comparação temporal do IQA")
-        if ids_com_iqa:
-            selecionados_atuais = st.session_state.get("comparar_iqa_publico", [])
-            if any(int(x) not in ids_com_iqa for x in selecionados_atuais):
-                st.session_state.comparar_iqa_publico = [int(x) for x in selecionados_atuais if int(x) in ids_com_iqa]
-            default_iqa = ids_com_iqa[:min(3, len(ids_com_iqa))]
-            comparar = st.multiselect(
-                "Pontos para comparar", options=ids_com_iqa,
-                default=default_iqa if "comparar_iqa_publico" not in st.session_state else None,
-                format_func=lambda pid: nomes_pontos.get(pid, str(pid)), max_selections=6,
-                key="comparar_iqa_publico", placeholder="Selecione os pontos")
-            if comparar:
-                grafico_comparacao_iqa_multiplos(resultados, comparar, pontos, faixas,
-                                                 foco_id=st.session_state.get("ponto_publico"))
-            else:
-                st.info("Selecione ao menos um ponto para comparar o IQA.")
-        else:
-            st.info("Ainda não há resultados de IQA para comparação.")
-
-    # 4 — Evolução temporal do mesmo parâmetro entre diversos pontos.
-    # Cada série contém apenas suas próprias datas de coleta; não inventar valores ausentes.
-    st.write("")
-    with st.container(border=True):
-        titulo_secao("Comparativo de parâmetros entre pontos")
-        if ids_parametros:
-            if st.session_state.get("parametro_temporal_comparado") not in ids_parametros:
-                st.session_state.parametro_temporal_comparado = ids_parametros[0]
-            parametro_comp = st.selectbox(
-                "Parâmetro", ids_parametros,
-                format_func=lambda pid: outros_parametros.loc[
-                    outros_parametros["id"] == pid, "nome"].iloc[0],
-                key="parametro_temporal_comparado")
-            ids_presentes = set(todas_medicoes.loc[
-                todas_medicoes["param_id"] == parametro_comp, "ponto_id"].dropna().astype(int))
-            ids_disponiveis = [int(pid) for pid in ids if int(pid) in ids_presentes]
-            atuais = st.session_state.get("pontos_parametros_comparados", [])
-            if any(int(x) not in ids_disponiveis for x in atuais):
-                st.session_state.pontos_parametros_comparados = [
-                    int(x) for x in atuais if int(x) in ids_disponiveis]
-            default = ids_disponiveis[:min(3, len(ids_disponiveis))]
-            comparar_param = st.multiselect(
-                "Pontos para comparar", ids_disponiveis,
-                default=default if "pontos_parametros_comparados" not in st.session_state else None,
-                format_func=lambda pid: nomes_pontos[pid],
-                key="pontos_parametros_comparados", max_selections=6,
-                placeholder="Selecione os pontos")
-            if comparar_param:
-                grafico_temporal_parametros_multiplos(
-                    resultados, parametro_comp, comparar_param, pontos, parametros)
-            else:
-                st.info("Selecione pelo menos um ponto.")
-        else:
-            st.info("Ainda não há resultados de parâmetros.")
 
     if not resultados.empty:
         exportar = resultados[resultados["ponto_id"] == st.session_state.get("ponto_iqa_individual", st.session_state.ponto_publico)].copy()
