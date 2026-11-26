@@ -142,7 +142,11 @@ p,li {line-height:1.55;}
 [data-testid="stVerticalBlockBorderWrapper"] {background:#FFFFFF;}
 [data-testid="stVerticalBlockBorderWrapper"] > div {gap:.65rem;}
 [data-testid="stMetric"] {background:#FFFFFF; border:1px solid #E2E8EE; border-radius:12px;
-  padding:16px 18px; min-height:112px;}
+  padding:16px 18px 16px 21px; min-height:112px; position:relative; overflow:hidden;}
+[data-testid="stMetric"]::before {
+  content:""; position:absolute; left:0; top:16px; bottom:16px; width:4px;
+  border-radius:0 4px 4px 0; background:#B9D9C6;
+}
 [data-testid="stMetricLabel"] p {color:#64748B !important; font-size:.76rem !important; font-weight:600;}
 [data-testid="stMetricValue"] {color:#17324D !important; font-size:1.75rem !important;}
 .stButton > button, .stDownloadButton > button, [data-testid="stFormSubmitButton"] button {
@@ -223,12 +227,28 @@ button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !im
 [data-testid="stDataFrame"] {border-radius:10px; overflow:hidden;}
 [data-testid="stPlotlyChart"] {border-radius:10px;}
 section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bottom:.05rem;}
-.brand {display:flex;align-items:center;gap:16px;}
+.brand {
+  display:flex; align-items:center; gap:17px; min-height:108px;
+  position:relative; isolation:isolate; overflow:hidden;
+  padding:10px 14px 10px 0; border-radius:10px;
+  background-color:rgba(246,248,250,.72);
+  background-image:
+    linear-gradient(90deg, rgba(246,248,250,.96) 0%, rgba(246,248,250,.88) 46%, rgba(246,248,250,.56) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720 150'%3E%3Cg fill='none' stroke='%2398C5A9' stroke-width='1.2' opacity='.52'%3E%3Cpath d='M-20 100 C80 12 160 145 270 78 S470 12 740 64'/%3E%3Cpath d='M-20 116 C85 28 165 158 280 94 S485 28 740 80'/%3E%3Cpath d='M-20 78 C75 -5 155 125 260 60 S465 -4 740 46'/%3E%3Cpath d='M-20 132 C90 48 170 175 290 110 S500 48 740 96'/%3E%3C/g%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-size:cover, 720px 150px;
+  background-position:center, right center;
+}
 .brand-logo {width:88px;height:88px;object-fit:contain;flex-shrink:0;border-radius:5px;}
+.brand-divider {width:2px;height:76px;background:#79B391;flex-shrink:0;border-radius:2px;}
+.brand-copy {display:flex;flex-direction:column;justify-content:center;min-width:0;}
+.brand-kicker {font-size:11px;line-height:1.2;letter-spacing:.075em;text-transform:uppercase;
+ color:#39845F;font-weight:700;margin-bottom:7px;}
 .brand-icon {width:42px;height:42px;display:grid;place-items:center;background:#EFF6FF;
  border-radius:11px;color:#2563EB;flex-shrink:0;}
 .brand-title {font-size:20px;font-weight:700;color:#17324D;line-height:1.25;}
-.brand-sub {font-size:11px;color:#64748B;margin-top:4px;}
+.brand-sub {font-size:11px;color:#64748B;margin-top:5px;}
+.public-header-rule {height:1px;background:linear-gradient(90deg,#83B99A 0%,#C7DCCF 58%,#DCE8E0 100%);
+ margin:9px 0 23px;border:0;}
 .eyebrow {font-size:.73rem;letter-spacing:.07em;text-transform:uppercase;
  color:#2563EB;font-weight:700;margin-bottom:6px;}
 .lead {font-size:.88rem;color:#64748B;max-width:820px;margin:0 0 8px;}
@@ -247,10 +267,14 @@ section[data-testid="stSidebar"] [data-testid="stElementContainer"] {margin-bott
 @media (max-width:700px) {
  [data-testid="stMainBlockContainer"] {padding-left:1rem;padding-right:1rem;}
  h1 {font-size:1.35rem !important;}
- [data-testid="stMetric"] {min-height:92px;padding:12px;}
+ [data-testid="stMetric"] {min-height:92px;padding:12px 12px 12px 16px;}
  [data-testid="stMetricValue"] {font-size:1.33rem !important;}
+ .brand {min-height:82px;gap:10px;padding-right:4px;}
  .brand-title {font-size:16px;}
- .brand-logo {width:68px;height:68px;}
+ .brand-kicker {font-size:9px;margin-bottom:5px;}
+ .brand-sub {font-size:10px;}
+ .brand-divider {height:58px;}
+ .brand-logo {width:64px;height:64px;}
 }
 
 /* Identidade visual global: azul; cores de classificação IQA ficam só nos gráficos. */
@@ -297,11 +321,16 @@ LOGO_GESTAO_AMBIENTAL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/4gIc
 
 
 def marca():
+    """Cabeçalho institucional; mantém a logo original incorporada ao app."""
     return (
         '<div class="brand">'
         f'<img class="brand-logo" src="{LOGO_GESTAO_AMBIENTAL}" alt="Gestão Ambiental UFSC">'
-        '<div><div class="brand-title">Gestão das Águas</div>'
-        '<div class="brand-sub">UFSC · Gestão Ambiental</div></div></div>'
+        '<span class="brand-divider" aria-hidden="true"></span>'
+        '<div class="brand-copy">'
+        '<div class="brand-kicker">Monitoramento ambiental</div>'
+        '<div class="brand-title">Gestão das Águas</div>'
+        '<div class="brand-sub">UFSC · Gestão Ambiental</div>'
+        '</div></div>'
     )
 
 
@@ -969,7 +998,7 @@ def cabecalho_publico():
                      key="entrar_admin", use_container_width=False):
             st.session_state.pagina = "login" if not st.session_state.autenticado else "admin"
             st.rerun()
-    st.divider()
+    st.markdown('<div class="public-header-rule"></div>', unsafe_allow_html=True)
 
 
 def tela_login():
