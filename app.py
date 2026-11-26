@@ -189,11 +189,11 @@ button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !im
 [data-baseweb="select"]:focus-within > div {border-color:#2563EB !important;}
 [class*="st-key-entrar_admin"] button {
   width:46px !important; min-width:46px !important; height:46px !important;
-  border-radius:12px !important; background:#EFF6FF !important;
-  color:#1D4ED8 !important; border:1px solid #BFDBFE !important;
+  border-radius:12px !important; background:#EFF8F1 !important;
+  color:#16805B !important; border:1px solid #CDE8D4 !important;
   display:flex !important; align-items:center !important; justify-content:center !important;
 }
-[class*="st-key-entrar_admin"] button:hover {background:#DBEAFE !important; border-color:#93C5FD !important;}
+[class*="st-key-entrar_admin"] button:hover {background:#E3F2E7 !important; border-color:#A8D5B5 !important;}
 [class*="st-key-entrar_admin"] {display:flex;justify-content:flex-end;}
 /* Ícone próprio desenhado por máscara SVG: centralização independente do ícone Material */
 [class*="st-key-entrar_admin"] button {
@@ -213,7 +213,7 @@ button[kind="primaryFormSubmit"] {background:#2563EB !important; color:white !im
   height:19px !important;
   margin:0 !important;
   padding:0 !important;
-  background-color:#1D4ED8 !important;
+  background-color:#16805B !important;
   -webkit-mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='3.2'/%3E%3Cpath d='M5.5 20c.6-3.3 3-5 6.5-5s5.9 1.7 6.5 5'/%3E%3C/svg%3E") !important;
   mask-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='8' r='3.2'/%3E%3Cpath d='M5.5 20c.6-3.3 3-5 6.5-5s5.9 1.7 6.5 5'/%3E%3C/svg%3E") !important;
   -webkit-mask-repeat:no-repeat !important;
